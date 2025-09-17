@@ -1,19 +1,17 @@
 name: Build FriendlyCore with I2S1 Support
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: output
 
 jobs:
   build:
     runs-on: ubuntu-20.04
-    environment:
-      ARCH: arm64
-      CROSS_COMPILE: aarch64-linux-gnu-
-      KERNEL_DEFCONFIG: nanopi4_defconfig
-      OUTPUT_DIR: output
-
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v2

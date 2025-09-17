@@ -1,4 +1,4 @@
-name: Build NanoPC-T4 Kernel (I2S1 Enabled)
+name: Build NanoPC-T4 Kernel (I2S1 Enabled) with Cache
 
 on:
   workflow_dispatch:
@@ -10,6 +10,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup cache for kernel source
+        uses: actions/cache@v3
+        with:
+          path: |
+            kernel-rockchip/.build-cache
+            kernel-rockchip/.config
+          key: ${{ runner.os }}-nanopi4-kernel-${{ hashFiles('dts/rk3399-nanopi4-rev00.dts') }}
+          restore-keys: |
+            ${{ runner.os }}-nanopi4-kernel-
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -18,13 +28,13 @@ jobs:
 
       - name: Clone kernel source
         run: |
-          git clone --depth=1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git
+          if [ ! -d kernel-rockchip ]; then
+            git clone --depth=1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git
+          fi
 
       - name: Copy custom DTS
         run: |
-          mkdir -p kernel-rockchip/arch/arm64/boot/dts/rockchip
-          cp $GITHUB_WORKSPACE/dts/rk3399-nanopi4-rev00.dts \
-             kernel-rockchip/arch/arm64/boot/dts/rockchip/
+          cp dts/rk3399-nanopi4-rev00.dts kernel-rockchip/arch/arm64/boot/dts/rockchip/
 
       - name: Configure and build kernel
         run: |
@@ -32,18 +42,17 @@ jobs:
           make ARCH=arm64 nanopi4_linux_defconfig CROSS_COMPILE=aarch64-linux-gnu-
           make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
 
-      - name: Copy Image and DTB for artifact
+      - name: Copy artifacts
         run: |
           cd kernel-rockchip
-          cp arch/arm64/boot/Image $GITHUB_WORKSPACE/Image
-          cp arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb \
-             $GITHUB_WORKSPACE/rk3399-nanopi4-rev00.dtb
+          cp arch/arm64/boot/Image ../Image
+          cp arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb ../rk3399-nanopi4-rev00.dtb
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nanopct4-kernel
           path: |
-            $GITHUB_WORKSPACE/Image
-            $GITHUB_WORKSPACE/rk3399-nanopi4-rev00.dtb
+            Image
+            rk3399-nanopi4-rev00.dtb
 

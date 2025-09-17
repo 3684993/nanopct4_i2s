@@ -38,7 +38,6 @@ jobs:
 
       - name: Compile kernel and device tree
         run: |
-          cd sources/kernel
           make ARCH=${{ env.ARCH }} CROSS_COMPILE=${{ env.CROSS_COMPILE }} ${KERNEL_DEFCONFIG}
           make ARCH=${{ env.ARCH }} CROSS_COMPILE=${{ env.CROSS_COMPILE }} Image dtbs -j$(nproc)
           mkdir -p ../${{ env.OUTPUT_DIR }}

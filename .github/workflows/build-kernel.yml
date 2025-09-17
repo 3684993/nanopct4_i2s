@@ -1,3 +1,4 @@
+# 将上面生成的 workflow 内容复制这里
 name: Build RK3399 Kernel + SD Image
 
 on:
@@ -45,8 +46,6 @@ jobs:
           git clone https://github.com/friendlyarm/sd-fuse_rk3399.git sd-fuse
           mkdir -p sdimg
           cp arch/arm64/boot/Image dtbs/*.dtb sd-fuse/
-          # 假设你已有 trust.img 和 loader 文件，可自行下载或放到 sd-fuse 目录
-          # 自动生成 boot.img
           cd sd-fuse
           ./mk-boot-img.sh Image *.dtb
 
@@ -59,4 +58,3 @@ jobs:
             kernel-rockchip/sd-fuse/boot.img
             kernel-rockchip/arch/arm64/boot/Image
             kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
-

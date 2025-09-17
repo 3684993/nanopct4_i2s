@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 确保完整检出
+          fetch-depth: 0  # 确保完整仓库检出
 
       - name: Install dependencies
         run: |
@@ -37,34 +37,34 @@ jobs:
 
       - name: Ensure I2S1 patch exists
         run: |
-          cd $GITHUB_WORKSPACE
-          PATCH_FILE="patches/enable_i2s1.patch"
+          PATCH_DIR="$GITHUB_WORKSPACE/patches"
+          PATCH_FILE="$PATCH_DIR/enable_i2s1.patch"
+          mkdir -p "$PATCH_DIR"
+          # 如果仓库里没有 patch，就从远程下载
           if [ ! -f "$PATCH_FILE" ]; then
-            echo "Patch not found in repo, downloading..."
-            mkdir -p patches
+            echo "Downloading enable_i2s1 patch..."
             wget -O "$PATCH_FILE" https://raw.githubusercontent.com/3684993/nanopct4_i2s/main/patches/enable_i2s1.patch
           fi
-          echo "Applying I2S1 patch"
-          git -C kernel-rockchip apply "$PATCH_FILE"
+          echo "Applying enable_i2s1 patch..."
+          git -C "$GITHUB_WORKSPACE/kernel-rockchip" apply "$PATCH_FILE"
 
       - name: Apply additional custom patches
         run: |
-          cd $GITHUB_WORKSPACE
-          for p in patches/*.patch; do
-            [ "$p" = "patches/enable_i2s1.patch" ] && continue
+          for p in $GITHUB_WORKSPACE/patches/*.patch; do
+            [ "$p" = "$GITHUB_WORKSPACE/patches/enable_i2s1.patch" ] && continue
             echo "Applying custom patch: $p"
-            git -C kernel-rockchip apply "$p" || patch -p1 -d kernel-rockchip < "$p" || true
+            git -C "$GITHUB_WORKSPACE/kernel-rockchip" apply "$p" || patch -p1 -d "$GITHUB_WORKSPACE/kernel-rockchip" < "$p" || true
           done
 
       - name: Download rootfs
         run: |
           ROOTFS_URL="${{ github.event.inputs.rootfs_url }}"
-          mkdir -p rootfs
-          wget -qO- "$ROOTFS_URL" | sudo tar -xzf - -C rootfs
+          mkdir -p $GITHUB_WORKSPACE/rootfs
+          wget -qO- "$ROOTFS_URL" | sudo tar -xzf - -C $GITHUB_WORKSPACE/rootfs
 
       - name: Select defconfig
         run: |
-          cd kernel-rockchip
+          cd $GITHUB_WORKSPACE/kernel-rockchip
           if [ -n "${{ github.event.inputs.defconfig }}" ]; then
             DEF="${{ github.event.inputs.defconfig }}"
           elif [ -f arch/arm64/configs/nanopi4_linux_defconfig ]; then
@@ -77,43 +77,43 @@ jobs:
 
       - name: Build kernel Image & dtbs
         run: |
-          cd kernel-rockchip
+          cd $GITHUB_WORKSPACE/kernel-rockchip
           make ARCH=arm64 ${{ env.DEFCONFIG }}
           make -j$(nproc) ARCH=arm64 Image dtbs
-          mkdir -p ../artifacts_kernel
-          cp arch/arm64/boot/Image ../artifacts_kernel/
-          find arch/arm64/boot/dts -name '*.dtb' -exec cp {} ../artifacts_kernel/ \;
+          mkdir -p $GITHUB_WORKSPACE/artifacts_kernel
+          cp arch/arm64/boot/Image $GITHUB_WORKSPACE/artifacts_kernel/
+          find arch/arm64/boot/dts -name '*.dtb' -exec cp {} $GITHUB_WORKSPACE/artifacts_kernel/ \;
 
       - name: Clone sd-fuse_rk3399
         run: |
-          git clone --depth 1 https://github.com/friendlyarm/sd-fuse_rk3399.git
-          mkdir -p sd-fuse_rk3399/friendlydesktop-arm64/Image
-          cp -v artifacts_kernel/Image sd-fuse_rk3399/friendlydesktop-arm64/Image/kernel.img
-          cp -v artifacts_kernel/*.dtb sd-fuse_rk3399/friendlydesktop-arm64/Image/
+          git clone --depth 1 https://github.com/friendlyarm/sd-fuse_rk3399.git $GITHUB_WORKSPACE/sd-fuse_rk3399
+          mkdir -p $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image
+          cp -v $GITHUB_WORKSPACE/artifacts_kernel/Image $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/kernel.img
+          cp -v $GITHUB_WORKSPACE/artifacts_kernel/*.dtb $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/
 
       - name: Copy rootfs into sd-fuse
         run: |
-          cp -r rootfs/* sd-fuse_rk3399/friendlydesktop-arm64/rootfs/
+          cp -r $GITHUB_WORKSPACE/rootfs/* $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/rootfs/
 
       - name: Download prebuilt loader/trust.img
         run: |
-          wget -q -O sd-fuse_rk3399/friendlydesktop-arm64/Image/MiniLoaderAll.bin https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/MiniLoaderAll.bin || true
-          wget -q -O sd-fuse_rk3399/friendlydesktop-arm64/Image/trust.img https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/trust.img || true
+          wget -q -O $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/MiniLoaderAll.bin https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/MiniLoaderAll.bin || true
+          wget -q -O $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/trust.img https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/trust.img || true
 
       - name: Build SD image
         run: |
-          cd sd-fuse_rk3399
+          cd $GITHUB_WORKSPACE/sd-fuse_rk3399
           chmod +x mk-sd-image.sh
           ./mk-sd-image.sh friendlydesktop-arm64
-          mkdir -p ../artifacts_sd
-          cp -v out/*.img ../artifacts_sd/ || true
-          cp -v out/boot.img ../artifacts_sd/ || true
+          mkdir -p $GITHUB_WORKSPACE/artifacts_sd
+          cp -v out/*.img $GITHUB_WORKSPACE/artifacts_sd/ || true
+          cp -v out/boot.img $GITHUB_WORKSPACE/artifacts_sd/ || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rk3399-nanopi4-sd
           path: |
-            artifacts_kernel/
-            artifacts_sd/
+            $GITHUB_WORKSPACE/artifacts_kernel/
+            $GITHUB_WORKSPACE/artifacts_sd/
 

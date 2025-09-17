@@ -26,20 +26,19 @@ jobs:
 
       - name: Enable I2S1 in Device Tree
         run: |
-          DTS_FILE="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-common.dtsi"
-          if [ -f "$DTS_FILE" ]; then
-            echo "🔧 Modifying $DTS_FILE to enable I2S1"
-            # 在 &i2s0 后插入 i2s1 节点
-            sed -i '/&i2s0/ a\
-            &i2s1 {\
-                assigned-clocks = <&cru SCLK_I2S_8CH>;\
-                assigned-clock-parents = <&cru SCLK_I2S1_8CH>;\
-                status = "okay";\
-            };' $DTS_FILE
+          CUSTOM_DTS="dts/rk3399-nanopi4-rev00.dts"
+          DTS_FILE="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts"
+          
+          if [ -f "$CUSTOM_DTS" ]; then
+             echo "🔧 Replacing DTS: $CUSTOM_DTS → $TARGET_DTS"
+             cp "$CUSTOM_DTS" "$TARGET_DTS"
           else
-            echo "❌ $DTS_FILE not found!"
-            exit 1
+             echo "Custom DTS not found: $CUSTOM_DTS"
+             exit 1
           fi
+
+          echo "✅ DTS replaced, validating..."
+          dtc -I dts -O dtb -o /dev/null "$TARGET_DTS" || (echo "❌ DTS syntax error!" && exit 1) 
 
       - name: Compile kernel and device tree
         run: |

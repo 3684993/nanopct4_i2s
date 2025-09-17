@@ -1,119 +1,62 @@
-name: Build NanoPC-T4 Kernel & SD Image (I2S1 enabled)
+name: Build RK3399 Kernel + SD Image
 
 on:
   workflow_dispatch:
-    inputs:
-      rootfs_url:
-        description: 'Rootfs URL (tar.gz)'
-        required: false
-        default: 'https://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.5-base-arm64.tar.gz'
-      defconfig:
-        description: 'Optional custom defconfig'
-        required: false
-        default: ''
-  push:
-    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      ARCH: arm64
-      CROSS_COMPILE: aarch64-linux-gnu-
+      ROOTFS_URL: "https://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-20.04-base-arm64.tar.gz"
+      CROSS_COMPILE: "aarch64-linux-gnu-"
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 确保完整仓库检出
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git build-essential bc bison flex libssl-dev libncurses-dev gcc-aarch64-linux-gnu device-tree-compiler u-boot-tools wget xz-utils tar pkg-config python3 python3-pip
+          sudo apt update
+          sudo apt install -y git wget unzip build-essential bc bison flex libncurses-dev libssl-dev device-tree-compiler u-boot-tools gcc-aarch64-linux-gnu
 
-      - name: Clone nanopi4-v4.19.y kernel
+      - name: Clone FriendlyElec kernel
         run: |
           git clone --depth 1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git kernel-rockchip
 
-      - name: Ensure I2S1 patch exists
+      - name: Download root filesystem
         run: |
-          PATCH_DIR="$GITHUB_WORKSPACE/patches"
-          PATCH_FILE="$PATCH_DIR/enable_i2s1.patch"
-          mkdir -p "$PATCH_DIR"
-          # 如果仓库里没有 patch，就从远程下载
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "Downloading enable_i2s1 patch..."
-            wget -O "$PATCH_FILE" https://raw.githubusercontent.com/3684993/nanopct4_i2s/main/patches/enable_i2s1.patch
-          fi
-          echo "Applying enable_i2s1 patch..."
-          git -C "$GITHUB_WORKSPACE/kernel-rockchip" apply "$PATCH_FILE"
+          mkdir -p rootfs
+          wget -c $ROOTFS_URL -O rootfs/ubuntu-base-arm64.tar.gz
+          tar -xzf rootfs/ubuntu-base-arm64.tar.gz -C rootfs
 
-      - name: Apply additional custom patches
+      - name: Configure kernel
         run: |
-          for p in $GITHUB_WORKSPACE/patches/*.patch; do
-            [ "$p" = "$GITHUB_WORKSPACE/patches/enable_i2s1.patch" ] && continue
-            echo "Applying custom patch: $p"
-            git -C "$GITHUB_WORKSPACE/kernel-rockchip" apply "$p" || patch -p1 -d "$GITHUB_WORKSPACE/kernel-rockchip" < "$p" || true
-          done
+          cd kernel-rockchip
+          make ARCH=arm64 nanopi4_linux_defconfig
 
-      - name: Download rootfs
+      - name: Compile kernel
         run: |
-          ROOTFS_URL="${{ github.event.inputs.rootfs_url }}"
-          mkdir -p $GITHUB_WORKSPACE/rootfs
-          wget -qO- "$ROOTFS_URL" | sudo tar -xzf - -C $GITHUB_WORKSPACE/rootfs
+          cd kernel-rockchip
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
 
-      - name: Select defconfig
+      - name: Generate SD boot image
         run: |
-          cd $GITHUB_WORKSPACE/kernel-rockchip
-          if [ -n "${{ github.event.inputs.defconfig }}" ]; then
-            DEF="${{ github.event.inputs.defconfig }}"
-          elif [ -f arch/arm64/configs/nanopi4_linux_defconfig ]; then
-            DEF="nanopi4_linux_defconfig"
-          else
-            DEF=$(ls arch/arm64/configs | grep -Ei 'nanopi|rk3399' | head -n1)
-          fi
-          echo "Selected defconfig: $DEF"
-          echo "DEFCONFIG=$DEF" >> $GITHUB_ENV
-
-      - name: Build kernel Image & dtbs
-        run: |
-          cd $GITHUB_WORKSPACE/kernel-rockchip
-          make ARCH=arm64 ${{ env.DEFCONFIG }}
-          make -j$(nproc) ARCH=arm64 Image dtbs
-          mkdir -p $GITHUB_WORKSPACE/artifacts_kernel
-          cp arch/arm64/boot/Image $GITHUB_WORKSPACE/artifacts_kernel/
-          find arch/arm64/boot/dts -name '*.dtb' -exec cp {} $GITHUB_WORKSPACE/artifacts_kernel/ \;
-
-      - name: Clone sd-fuse_rk3399
-        run: |
-          git clone --depth 1 https://github.com/friendlyarm/sd-fuse_rk3399.git $GITHUB_WORKSPACE/sd-fuse_rk3399
-          mkdir -p $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image
-          cp -v $GITHUB_WORKSPACE/artifacts_kernel/Image $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/kernel.img
-          cp -v $GITHUB_WORKSPACE/artifacts_kernel/*.dtb $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/
-
-      - name: Copy rootfs into sd-fuse
-        run: |
-          cp -r $GITHUB_WORKSPACE/rootfs/* $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/rootfs/
-
-      - name: Download prebuilt loader/trust.img
-        run: |
-          wget -q -O $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/MiniLoaderAll.bin https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/MiniLoaderAll.bin || true
-          wget -q -O $GITHUB_WORKSPACE/sd-fuse_rk3399/friendlydesktop-arm64/Image/trust.img https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/trust.img || true
-
-      - name: Build SD image
-        run: |
-          cd $GITHUB_WORKSPACE/sd-fuse_rk3399
-          chmod +x mk-sd-image.sh
-          ./mk-sd-image.sh friendlydesktop-arm64
-          mkdir -p $GITHUB_WORKSPACE/artifacts_sd
-          cp -v out/*.img $GITHUB_WORKSPACE/artifacts_sd/ || true
-          cp -v out/boot.img $GITHUB_WORKSPACE/artifacts_sd/ || true
+          cd kernel-rockchip
+          git clone https://github.com/friendlyarm/sd-fuse_rk3399.git sd-fuse
+          mkdir -p sdimg
+          cp arch/arm64/boot/Image dtbs/*.dtb sd-fuse/
+          # 假设你已有 trust.img 和 loader 文件，可自行下载或放到 sd-fuse 目录
+          # 自动生成 boot.img
+          cd sd-fuse
+          ./mk-boot-img.sh Image *.dtb
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        if: success()
+        uses: actions/upload-artifact@v3
         with:
-          name: rk3399-nanopi4-sd
+          name: rk3399-sd-image
           path: |
-            $GITHUB_WORKSPACE/artifacts_kernel/
-            $GITHUB_WORKSPACE/artifacts_sd/
+            kernel-rockchip/sd-fuse/boot.img
+            kernel-rockchip/arch/arm64/boot/Image
+            kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
 

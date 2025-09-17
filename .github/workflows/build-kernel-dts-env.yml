@@ -13,6 +13,17 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v2
+        with:
+          repository: friendlyarm/kernel-rockchip
+          ref: nanopi4-v4.19.y
+          
+      - name: Install cross-compiler
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          
       - name: Download custom DTS
         run: |
           mkdir -p dts
@@ -34,17 +45,6 @@ jobs:
 
           echo "DTS replaced, validating..."
           dtc -I dts -O dtb -o /dev/null "$TARGET_DTS" || (echo "DTS syntax error!" && exit 1) 
-
-      - name: Checkout kernel source
-        uses: actions/checkout@v2
-        with:
-          repository: friendlyarm/kernel-rockchip
-          ref: nanopi4-v4.19.y
-          
-      - name: Install cross-compiler
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Compile kernel and device tree
         run: |

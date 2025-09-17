@@ -1,0 +1,110 @@
+name: Build NanoPC-T4 Kernel & SD Image (with I2S1 enable)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rootfs_url:
+        description: 'Rootfs URL (tar.gz)'
+        required: false
+        default: 'https://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.5-base-arm64.tar.gz'
+      defconfig:
+        description: 'Optional custom defconfig'
+        required: false
+        default: ''
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential bc bison flex libssl-dev libncurses-dev gcc-aarch64-linux-gnu device-tree-compiler u-boot-tools wget xz-utils tar pkg-config python3 python3-pip
+
+      - name: Clone nanopi4-v4.19.y kernel
+        run: |
+          git clone --depth 1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git kernel-rockchip
+
+      - name: Apply I2S1 patch
+        run: |
+          if [ -f patches/enable_i2s1.patch ]; then
+            echo "Applying I2S1 patch"
+            git -C kernel-rockchip apply patches/enable_i2s1.patch
+          fi
+          # 可自动应用其他自定义 patch
+          if [ -d patches ]; then
+            for p in patches/*.patch; do
+              [ "$p" = "patches/enable_i2s1.patch" ] && continue
+              echo "Applying custom patch: $p"
+              git -C kernel-rockchip apply "$p" || patch -p1 -d kernel-rockchip < "$p" || true
+            done
+          fi
+
+      - name: Download rootfs
+        run: |
+          ROOTFS_URL="${{ github.event.inputs.rootfs_url }}"
+          mkdir -p rootfs
+          wget -qO- "$ROOTFS_URL" | sudo tar -xzf - -C rootfs
+
+      - name: Select defconfig
+        run: |
+          cd kernel-rockchip
+          if [ -n "${{ github.event.inputs.defconfig }}" ]; then
+            DEF="${{ github.event.inputs.defconfig }}"
+          elif [ -f arch/arm64/configs/nanopi4_linux_defconfig ]; then
+            DEF="nanopi4_linux_defconfig"
+          else
+            DEF=$(ls arch/arm64/configs | grep -Ei 'nanopi|rk3399' | head -n1)
+          fi
+          echo "Selected defconfig: $DEF"
+          echo "DEFCONFIG=$DEF" >> $GITHUB_ENV
+
+      - name: Build kernel Image & dtbs
+        run: |
+          cd kernel-rockchip
+          make ARCH=arm64 ${{ env.DEFCONFIG }}
+          make -j$(nproc) ARCH=arm64 Image dtbs
+          mkdir -p ../artifacts_kernel
+          cp arch/arm64/boot/Image ../artifacts_kernel/
+          find arch/arm64/boot/dts -name '*.dtb' -exec cp {} ../artifacts_kernel/ \;
+
+      - name: Clone sd-fuse_rk3399
+        run: |
+          git clone --depth 1 https://github.com/friendlyarm/sd-fuse_rk3399.git
+          mkdir -p sd-fuse_rk3399/friendlydesktop-arm64/Image
+          cp -v artifacts_kernel/Image sd-fuse_rk3399/friendlydesktop-arm64/Image/kernel.img
+          cp -v artifacts_kernel/*.dtb sd-fuse_rk3399/friendlydesktop-arm64/Image/
+
+      - name: Copy rootfs into sd-fuse
+        run: |
+          cp -r rootfs/* sd-fuse_rk3399/friendlydesktop-arm64/rootfs/
+
+      - name: Download prebuilt loader/trust.img
+        run: |
+          wget -q -O sd-fuse_rk3399/friendlydesktop-arm64/Image/MiniLoaderAll.bin https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/MiniLoaderAll.bin || true
+          wget -q -O sd-fuse_rk3399/friendlydesktop-arm64/Image/trust.img https://raw.githubusercontent.com/friendlyarm/sd-fuse_rk3399/master/prebuilt/trust.img || true
+
+      - name: Build SD image
+        run: |
+          cd sd-fuse_rk3399
+          chmod +x mk-sd-image.sh
+          ./mk-sd-image.sh friendlydesktop-arm64
+          mkdir -p ../artifacts_sd
+          cp -v out/*.img ../artifacts_sd/ || true
+          cp -v out/boot.img ../artifacts_sd/ || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk3399-nanopi4-sd
+          path: |
+            artifacts_kernel/
+            artifacts_sd/

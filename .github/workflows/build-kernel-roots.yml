@@ -1,0 +1,89 @@
+name: Build NanoPC-T4 Minimal Image with I2S1
+
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: output
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      # 1. 检出仓库
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. 安装依赖
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc-aarch64-linux-gnu \
+            git fakeroot libncurses5-dev libssl-dev cpio unzip rsync bc bison flex \
+            qemu-user-static debootstrap kpartx xz-utils gzip dosfstools e2fsprogs parted
+
+      # 3. 克隆源码 (kernel + u-boot + build scripts)
+      - name: Clone Sources
+        run: |
+          mkdir -p sources && cd sources
+          git clone --depth=1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git kernel
+          git clone --depth=1 -b nanopi4-v2017.09 https://github.com/friendlyarm/uboot-rockchip.git uboot
+          git clone --depth=1 https://github.com/friendlyarm/sd-fuse_rk3399.git sd-fuse
+
+      # 4. Patch DTS for I2S1
+      - name: Enable I2S1 in DTS
+        run: |
+          DTS_FILE="sources/kernel/arch/arm64/boot/dts/rockchip/nanopi4.dtsi"
+          if grep -q 'i2s1: i2s@ff8a0000' $DTS_FILE; then
+            sed -i '/i2s1: i2s@ff8a0000/,/};/ s/status = "disabled";/status = "okay";/' $DTS_FILE
+            if ! grep -q 'status = "okay";' $DTS_FILE; then
+              sed -i '/i2s1: i2s@ff8a0000/,/};/ s/};/    status = "okay";\n};/' $DTS_FILE
+            fi
+          fi
+
+      # 5. 编译 U-Boot
+      - name: Build U-Boot
+        run: |
+          cd sources/uboot
+          make CROSS_COMPILE=${CROSS_COMPILE} nanopi4_defconfig
+          make CROSS_COMPILE=${CROSS_COMPILE} -j$(nproc)
+
+      # 6. 编译 Kernel + DTB
+      - name: Build Kernel
+        run: |
+          cd sources/kernel
+          make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} ${KERNEL_DEFCONFIG}
+          make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} Image dtbs modules -j$(nproc)
+          mkdir -p ../../${OUTPUT_DIR}
+          cp arch/arm64/boot/Image ../../${OUTPUT_DIR}/
+          cp arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb ../../${OUTPUT_DIR}/
+
+      # 7. 构建最小 rootfs (Debian/Ubuntu)
+      - name: Build Minimal RootFS
+        run: |
+          mkdir -p rootfs
+          sudo debootstrap --arch=arm64 --foreign focal rootfs http://ports.ubuntu.com/
+          sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+          sudo chroot rootfs /debootstrap/debootstrap --second-stage
+          echo "nanopi-t4" | sudo tee rootfs/etc/hostname
+          echo "root:root" | sudo chroot rootfs chpasswd
+
+      # 8. 打包 eflasher 镜像
+      - name: Pack eFlasher Image
+        run: |
+          cd sources/sd-fuse
+          ./mk-emmc-image.sh friendlycore-focal64
+          IMG_NAME=$(ls *.img)
+          gzip -c $IMG_NAME > ../../${OUTPUT_DIR}/nanopi_i2s1_enable.img.gz
+
+      # 9. 上传 Artifact
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanopi_i2s1_enable
+          path: ${{ env.OUTPUT_DIR }}/nanopi_i2s1_enable.img.gz
+

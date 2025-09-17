@@ -13,31 +13,19 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout kernel source
-        uses: actions/checkout@v2
-        with:
-          repository: friendlyarm/kernel-rockchip
-          ref: nanopi4-v4.19.y
-      - name: Debug repo root
+      - name: Download custom DTS
         run: |
-          echo "Current working directory: $(pwd)"
-          echo "Files in current directory:"
-          ls -alh
-          echo "Recursive list:"
-          ls -R .
-          
-      - name: Install cross-compiler
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
+          mkdir -p dts
+          curl -L -o dts/rk3399-nanopi4-rev00.dts https://raw.githubusercontent.com/3684993/nanopct4_i2s/main/dts/rk3399-nanopi4-rev00.dts
+          cp dts/rk3399-nanopi4-rev00.dts arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+      
       - name: Replace DTS with custom file
         run: |
-          CUSTOM_DTS="./dts/rk3399-nanopi4-rev00.dts"
+          CUSTOM_DTS="dts/rk3399-nanopi4-rev00.dts"
           DTS_FILE="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts"
           
           if [ -f "$CUSTOM_DTS" ]; then
-             echo "🔧 Replacing DTS: $CUSTOM_DTS → $TARGET_DTS"
+             echo "Replacing DTS: $CUSTOM_DTS → $TARGET_DTS"
              cp "$CUSTOM_DTS" "$TARGET_DTS"
           else
              echo "Custom DTS not found: $CUSTOM_DTS"
@@ -46,6 +34,17 @@ jobs:
 
           echo "DTS replaced, validating..."
           dtc -I dts -O dtb -o /dev/null "$TARGET_DTS" || (echo "DTS syntax error!" && exit 1) 
+
+      - name: Checkout kernel source
+        uses: actions/checkout@v2
+        with:
+          repository: friendlyarm/kernel-rockchip
+          ref: nanopi4-v4.19.y
+          
+      - name: Install cross-compiler
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Compile kernel and device tree
         run: |

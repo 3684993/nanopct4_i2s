@@ -1,4 +1,4 @@
-name: Build NanoPC-T4 Kernel (I2S1 Enabled)
+name: Build RK3399 Kernel (I2S1 enabled + cache)
 
 on:
   workflow_dispatch:
@@ -6,40 +6,51 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout Repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make git
+          sudo apt-get install -y build-essential bc bison flex libssl-dev \
+            make gcc g++ git wget curl device-tree-compiler
 
-      - name: Clone Kernel
+      - name: Clone kernel source
         run: |
           git clone --depth=1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git
 
-      - name: Replace DTS with custom one
-        run: |
-          cp dts/rk3399-nanopi4-rev00.dts kernel-rockchip/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+      - name: Restore kernel build cache
+        uses: actions/cache@v4
+        with:
+          path: kernel-rockchip/.build-cache
+          key: rk3399-kernel-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            rk3399-kernel-${{ runner.os }}-
 
-      - name: Build Kernel
+      - name: Build kernel Image + dtb
         run: |
           cd kernel-rockchip
-          make ARCH=arm64 nanopi4_linux_defconfig CROSS_COMPILE=aarch64-linux-gnu-
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          # 让内核构建使用缓存目录
+          mkdir -p .build-cache
+          make O=.build-cache ARCH=arm64 nanopc-t4_defconfig
+          make O=.build-cache ARCH=arm64 -j$(nproc)
+          cp .build-cache/arch/arm64/boot/Image arch/arm64/boot/Image
+          cp .build-cache/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb \
+             arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb
 
-      - name: Package boot.img
-        run: |
-          git clone --depth=1 https://github.com/friendlyarm/sd-fuse_rk3399.git
-          cd sd-fuse_rk3399
-          ./mk-kernel.sh ../kernel-rockchip
+      - name: Save kernel build cache
+        uses: actions/cache@v4
+        with:
+          path: kernel-rockchip/.build-cache
+          key: rk3399-kernel-${{ runner.os }}-${{ github.sha }}
 
-      - name: Upload Artifacts
+      - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nanopct4-kernel
+          name: rk3399-kernel-i2s1
           path: |
-            sd-fuse_rk3399/boot.img
             kernel-rockchip/arch/arm64/boot/Image
-            kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
+            kernel-rockchip/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb
+

@@ -1,0 +1,65 @@
+name: FriendlyCore I2S1
+
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: output
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v2
+        with:
+          repository: friendlyarm/kernel-rockchip
+          ref: nanopi4-v4.19.y
+
+      - name: Enable I2S1 in Device Tree
+        run: |
+          DTS_FILE="sources/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-common.dtsi"
+          if [ -f "$DTS_FILE" ]; then
+            echo "🔧 Modifying $DTS_FILE to enable I2S1"
+            # 在 &i2s0 后插入 i2s1 节点
+            sed -i '/&i2s0/ a\
+            &i2s1 {\
+                assigned-clocks = <&cru SCLK_I2S_8CH>;\
+                assigned-clock-parents = <&cru SCLK_I2S1_8CH>;\
+                status = "okay";\
+            };' $DTS_FILE
+          else
+            echo "❌ $DTS_FILE not found!"
+            exit 1
+          fi
+
+      - name: Compile kernel and device tree
+        run: |
+          cd sources/kernel
+          make ARCH=${{ env.ARCH }} CROSS_COMPILE=${{ env.CROSS_COMPILE }} ${KERNEL_DEFCONFIG}
+          make ARCH=${{ env.ARCH }} CROSS_COMPILE=${{ env.CROSS_COMPILE }} Image dtbs -j$(nproc)
+          mkdir -p ../${{ env.OUTPUT_DIR }}
+          cp arch/arm64/boot/Image ../${{ env.OUTPUT_DIR }}/Image
+          cp arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb ../${{ env.OUTPUT_DIR }}/rk3399-nanopi4-rev00.dtb
+
+      - name: Build minimal root filesystem with Buildroot
+        run: |
+          git clone https://github.com/buildroot/buildroot.git
+          cd buildroot
+          make nanopi4_defconfig
+          make -j$(nproc)
+          cp output/images/rootfs.tar ${GITHUB_WORKSPACE}/${{ env.OUTPUT_DIR }}/rootfs.tar
+
+      - name: Create eflasher image
+        run: |
+          cd ${GITHUB_WORKSPACE}/${{ env.OUTPUT_DIR }}
+          mkdir -p FriendlyCore
+          cp Image FriendlyCore/
+          cp rk3399-nanopi4-rev00.dtb FriendlyCore/
+          cp rootfs.tar FriendlyCore/
+          cd FriendlyCore
+          tar czf ../FriendlyCore-i2s1-enable.img.gz .
+

@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install build dependencies
@@ -32,13 +32,18 @@ jobs:
       - name: Build kernel Image + dtb
         run: |
           cd kernel-rockchip
-          # 让内核构建使用缓存目录
           mkdir -p .build-cache
-          make O=.build-cache ARCH=arm64 nanopc-t4_defconfig
+
+          # 使用 nanopi4_linux_defconfig
+          make O=.build-cache ARCH=arm64 nanopi4_linux_defconfig
           make O=.build-cache ARCH=arm64 -j$(nproc)
+
+          # 拷贝 Image
           cp .build-cache/arch/arm64/boot/Image arch/arm64/boot/Image
-          cp .build-cache/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb \
-             arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb
+
+          # 使用仓库 DTS 文件生成 dtb
+          dtc -I dts -O dtb $GITHUB_WORKSPACE/dts/rk3399-nanopi4-rev00.dts \
+              -o arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb
 
       - name: Save kernel build cache
         uses: actions/cache@v4

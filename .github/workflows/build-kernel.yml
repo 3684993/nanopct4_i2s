@@ -1,4 +1,4 @@
-name: Build NanoPC-T4 Kernel & SD Image (with I2S1 enable)
+name: Build NanoPC-T4 Kernel & SD Image (I2S1 enabled)
 
 on:
   workflow_dispatch:
@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 确保完整检出
 
       - name: Install dependencies
         run: |
@@ -35,18 +37,21 @@ jobs:
 
       - name: Apply I2S1 patch
         run: |
+          # 切换到仓库根目录，保证路径正确
+          cd $GITHUB_WORKSPACE
           if [ -f patches/enable_i2s1.patch ]; then
             echo "Applying I2S1 patch"
             git -C kernel-rockchip apply patches/enable_i2s1.patch
+          else
+            echo "Error: enable_i2s1.patch not found!"
+            exit 1
           fi
-          # 可自动应用其他自定义 patch
-          if [ -d patches ]; then
-            for p in patches/*.patch; do
-              [ "$p" = "patches/enable_i2s1.patch" ] && continue
-              echo "Applying custom patch: $p"
-              git -C kernel-rockchip apply "$p" || patch -p1 -d kernel-rockchip < "$p" || true
-            done
-          fi
+          # 应用其他自定义 patch
+          for p in patches/*.patch; do
+            [ "$p" = "patches/enable_i2s1.patch" ] && continue
+            echo "Applying custom patch: $p"
+            git -C kernel-rockchip apply "$p" || patch -p1 -d kernel-rockchip < "$p" || true
+          done
 
       - name: Download rootfs
         run: |
@@ -108,3 +113,4 @@ jobs:
           path: |
             artifacts_kernel/
             artifacts_sd/
+

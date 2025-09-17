@@ -7,27 +7,25 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      ROOTFS_URL: "https://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-20.04-base-arm64.tar.gz"
       CROSS_COMPILE: "aarch64-linux-gnu-"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y git wget unzip build-essential bc bison flex libncurses-dev libssl-dev device-tree-compiler u-boot-tools gcc-aarch64-linux-gnu
+          sudo apt install -y git build-essential bc bison flex libncurses-dev libssl-dev device-tree-compiler u-boot-tools gcc-aarch64-linux-gnu
 
       - name: Clone FriendlyElec kernel
         run: |
           git clone --depth 1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git kernel-rockchip
 
-      - name: Download root filesystem
+      - name: Copy local DTS with I2S1 enabled
         run: |
-          mkdir -p rootfs
-          wget -c $ROOTFS_URL -O rootfs/ubuntu-base-arm64.tar.gz
-          tar -xzf rootfs/ubuntu-base-arm64.tar.gz -C rootfs
+          cp $GITHUB_WORKSPACE/kernel-rockchip/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts \
+             kernel-rockchip/arch/arm64/boot/dts/rockchip/
 
       - name: Configure kernel
         run: |
@@ -43,7 +41,6 @@ jobs:
         run: |
           cd kernel-rockchip
           git clone https://github.com/friendlyarm/sd-fuse_rk3399.git sd-fuse
-          mkdir -p sdimg
           cp arch/arm64/boot/Image dtbs/*.dtb sd-fuse/
           cd sd-fuse
           ./mk-boot-img.sh Image *.dtb
@@ -57,4 +54,3 @@ jobs:
             kernel-rockchip/sd-fuse/boot.img
             kernel-rockchip/arch/arm64/boot/Image
             kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
-

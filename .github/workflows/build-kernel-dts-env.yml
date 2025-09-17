@@ -21,7 +21,7 @@ jobs:
 
       - name: Enable I2S1 in Device Tree
         run: |
-          DTS_FILE="sources/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-common.dtsi"
+          DTS_FILE="kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-common.dtsi"
           if [ -f "$DTS_FILE" ]; then
             echo "🔧 Modifying $DTS_FILE to enable I2S1"
             # 在 &i2s0 后插入 i2s1 节点

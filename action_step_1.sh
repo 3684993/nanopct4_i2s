@@ -1,3 +1,37 @@
+#!/bin/bash
+# 一键初始化 GitHub 仓库，并推送工作流
+# 用法: ./action_step_1.sh <github_username> <pat_token> <repo_name>
+
+set -e
+
+if [ $# -ne 3 ]; then
+    echo "用法: $0 <github_username> <pat_token> <repo_name>"
+    exit 1
+fi
+
+USERNAME=$1
+TOKEN=$2
+REPO_NAME=$3
+REPO_URL="https://github.com/$USERNAME/$REPO_NAME.git"
+AUTH_URL="https://$USERNAME:$TOKEN@github.com/$USERNAME/$REPO_NAME.git"
+
+echo ">>> 初始化仓库: $REPO_NAME"
+
+# 清理并创建本地目录
+rm -rf $REPO_NAME
+mkdir -p $REPO_NAME/dts
+cd $REPO_NAME
+git init -b main
+
+# 创建 README
+cat > README.md <<EOF
+# $REPO_NAME
+自动编译 NanoPC-T4 内核 (启用 I2S1)
+EOF
+
+# 创建 workflow
+mkdir -p .github/workflows
+cat > .github/workflows/build-kernel.yml <<'EOF'
 name: Build NanoPC-T4 Kernel (I2S1 Enabled)
 
 on:
@@ -43,3 +77,13 @@ jobs:
             sd-fuse_rk3399/boot.img
             kernel-rockchip/arch/arm64/boot/Image
             kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
+EOF
+
+# Git 提交并推送
+git add .
+git commit -m "Initial commit with workflow and DTS override"
+git remote add origin $AUTH_URL
+git push -u origin main --force
+
+echo ">>> 完成。请将你的 DTS 文件放到 dts/ 目录并推送。"
+

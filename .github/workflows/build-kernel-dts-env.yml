@@ -18,6 +18,11 @@ jobs:
         with:
           repository: friendlyarm/kernel-rockchip
           ref: nanopi4-v4.19.y
+          
+      - name: Install cross-compiler
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Enable I2S1 in Device Tree
         run: |

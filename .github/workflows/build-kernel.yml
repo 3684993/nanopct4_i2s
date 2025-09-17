@@ -35,18 +35,21 @@ jobs:
         run: |
           git clone --depth 1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git kernel-rockchip
 
-      - name: Apply I2S1 patch
+      - name: Ensure I2S1 patch exists
         run: |
-          # 切换到仓库根目录，保证路径正确
           cd $GITHUB_WORKSPACE
-          if [ -f patches/enable_i2s1.patch ]; then
-            echo "Applying I2S1 patch"
-            git -C kernel-rockchip apply patches/enable_i2s1.patch
-          else
-            echo "Error: enable_i2s1.patch not found!"
-            exit 1
+          PATCH_FILE="patches/enable_i2s1.patch"
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "Patch not found in repo, downloading..."
+            mkdir -p patches
+            wget -O "$PATCH_FILE" https://raw.githubusercontent.com/3684993/nanopct4_i2s/main/patches/enable_i2s1.patch
           fi
-          # 应用其他自定义 patch
+          echo "Applying I2S1 patch"
+          git -C kernel-rockchip apply "$PATCH_FILE"
+
+      - name: Apply additional custom patches
+        run: |
+          cd $GITHUB_WORKSPACE
           for p in patches/*.patch; do
             [ "$p" = "patches/enable_i2s1.patch" ] && continue
             echo "Applying custom patch: $p"

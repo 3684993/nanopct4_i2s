@@ -1,4 +1,4 @@
-name: Boot Image
+name: TEST NanoPC
 
 on:
   workflow_dispatch:

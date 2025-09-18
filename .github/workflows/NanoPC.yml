@@ -21,6 +21,7 @@ jobs:
       - name: Copy custom DTS (if exists)
         run: |
           if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            ls -l
             echo "Replacing DTS with custom version..."
           else
             echo "Using default DTS from kernel repo."

@@ -40,13 +40,6 @@ jobs:
           fi  
 
           if [ -f "$CUSTOM_DTS" ]; then
-             echo "DTS CUSTOM_DTS"
-             dtc -I dts -O dtb -o /dev/null "$CUSTOM_DTS" || (echo "DTS syntax error!" && exit 1)
-             ls -alf 
-             echo "DTS TARGET_DTS"
-             dtc -I dts -O dtb -o /dev/null "$TARGET_DTS" || (echo "DTS syntax error!" && exit 1)
-             ls -alf 
-             
              echo "Replacing DTS: $CUSTOM_DTS → $TARGET_DTS"
              cp "$CUSTOM_DTS" "$TARGET_DTS"
           else

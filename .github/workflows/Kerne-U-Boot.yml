@@ -2,10 +2,7 @@ name: Kerne U-Boot (I2S1 enabled)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-
+  
 jobs:
   build:
     runs-on: ubuntu-22.04

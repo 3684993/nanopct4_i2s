@@ -4,6 +4,7 @@
  * (http://www.friendlyarm.com)
  */
 
+
 /dts-v1/;
 #include "rk3399-nanopi4-common.dtsi"
 

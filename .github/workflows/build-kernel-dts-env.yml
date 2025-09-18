@@ -21,12 +21,13 @@ jobs:
           
       - name: Install cross-compiler
         run: |
-          sudo apt install -y device-tree-compiler
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
           
       - name: Replace DTS with custom file
         run: |
-          CUSTOM_DTS="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev01.dts"
+          CUSTOM_DTS="temp_dts_repo/dts/rk3399-nanopi4-rev00.dts"
           TARGET_DTS="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts"
 
           if [ -f "$CUSTOM_DTS" ]; then
@@ -36,9 +37,6 @@ jobs:
              echo "Custom DTS not found: $CUSTOM_DTS"
              exit 1
           fi
-
-          echo "DTS replaced, validating..."
-          dtc -I dts -O dtb -o /dev/null "$TARGET_DTS" || (echo "DTS syntax error!" && exit 1) 
 
       - name: Compile kernel and device tree
         run: |

@@ -24,7 +24,7 @@ jobs:
              echo "DTS folder not found in nanopct4_i2s repository!"
              exit 1
           fi  
-          ls -l
+          ls -l ../
           
       - name: Checkout kernel source
         uses: actions/checkout@v2

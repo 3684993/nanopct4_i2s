@@ -26,7 +26,7 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc u-boot-tools device-tree-compiler
+          sudo apt-get install -y aarch64-linux-gnu-gcc build-essential libncurses-dev bison flex libssl-dev bc u-boot-tools device-tree-compiler
 
       - name: Setup output directory
         run: mkdir -p ${{ env.OUTPUT_DIR }}

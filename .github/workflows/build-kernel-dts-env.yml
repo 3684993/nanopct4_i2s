@@ -27,7 +27,7 @@ jobs:
       - name: Download custom DTS
         run: |
           mkdir -p dts
-          curl -L -o dts/rk3399-nanopi4-rev00.dts https://raw.githubusercontent.com/friendlyarm/kernel-rockchip/refs/heads/nanopi4-v4.19.y/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          curl -L -o dts/rk3399-nanopi4-rev00.dts https://raw.githubusercontent.com/friendlyarm/kernel-rockchip/nanopi4-v4.19.y/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
           cp dts/rk3399-nanopi4-rev00.dts arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
       
       - name: Replace DTS with custom file

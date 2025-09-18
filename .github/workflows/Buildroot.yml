@@ -1,0 +1,81 @@
+name: Build FriendlyARM Buildroot for NanoPC-T4 (RK3399)
+
+on:
+  workflow_dispatch:    # 允许手动触发
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  SDK_DIR: linuxsdk-friendlyelec  # SDK 目录
+  OUTPUT_DIR: images-output       # 输出目录
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04         # 使用 Ubuntu 22.04 构建环境
+
+    steps:
+      # 步骤 1: 安装必要的宿主机工具和依赖项
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y repo git-core gitk git-gui gcc-aarch64-linux-gnu u-boot-tools \
+          device-tree-compiler mtools parted libudev-dev libusb-1.0-0-dev python3 \
+          autoconf autotools-dev libsigsegv2 m4 intltool libdrm-dev curl sed make \
+          binutils build-essential gcc g++ bash patch gzip bzip2 perl tar cpio python3 \
+          unzip rsync file bc wget libncurses5 libncurses-dev libssl-dev texinfo \
+          liblz4-tool genext2fs lib32stdc++6
+
+      # 步骤 2: 初始化 FriendlyARM 的 Buildroot SDK (使用 repo 工具)
+      - name: Initialize FriendlyARM SDK with repo
+        run: |
+          mkdir -p ${{ env.SDK_DIR }}
+          cd ${{ env.SDK_DIR }}
+          # 初始化 repo 清单，指定 RK3399 的 manifest
+          repo init -u https://github.com/friendlyarm/buildroot_manifests \
+            -b master -m rk3399_linux_release.xml \
+            --repo-url=https://github.com/rockchip-linux/repo --no-clone-bundle
+          # 开始同步代码库，使用循环以应对网络中断
+          until repo sync -c --no-clone-bundle -j$(nproc); do
+            echo "Repo sync failed, retrying in 10 seconds..."
+            sleep 10
+          done
+
+      # 步骤 3: (可选) 在这里添加任何自定义步骤，例如替换设备树文件 (DTS)
+      # - name: Apply custom DTS (example)
+      #   run: |
+      #     cd ${{ env.SDK_DIR }}
+      #     cp /path/to/your/custom.dts kernel/arch/arm64/boot/dts/rockchip/your-custom.dts
+      #   if: always() # 或者根据需要设置条件
+
+      # 步骤 4: 执行构建 - 使用 FriendlyARM 提供的 build.sh 脚本
+      - name: Build images using FriendlyARM build.sh
+        run: |
+          cd ${{ env.SDK_DIR }}
+          # 授予脚本执行权限
+          chmod +x build.sh
+          # 构建所有组件 (u-boot, kernel, rootfs) 并生成 SD 卡镜像
+          # 你可以根据需要修改目标，例如 ./build.sh kernel 只编译内核
+          ./build.sh sd-img 2>&1 | tee build.log
+
+      # 步骤 5: 收集构建产物
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanopc-t4-buildroot-images
+          path: |
+            ${{ env.SDK_DIR }}/rockdev/*.img
+            ${{ env.SDK_DIR }}/build.log
+          retention-days: 7
+
+      # 步骤 6: (可选) 如果构建失败，上传日志以供调试
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-logs
+          path: |
+            ${{ env.SDK_DIR }}/**/*.log
+            ${{ env.SDK_DIR }}/**/build/*.log
+          retention-days: 3

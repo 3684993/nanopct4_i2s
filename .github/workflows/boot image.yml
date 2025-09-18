@@ -1,0 +1,70 @@
+name: Boot Image
+
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: output
+  DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+  BOOT_IMG: output/boot.img
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: friendlyarm/kernel-rockchip
+          ref: nanopi4-v4.19.y
+          path: kernel
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc u-boot-tools device-tree-compiler
+
+      - name: Setup output directory
+        run: mkdir -p ${{ env.OUTPUT_DIR }}
+
+      - name: Replace DTS to enable I2S1
+        run: |
+          sed -i '/&i2s0/ a\
+          &i2s1 {\
+              status = "okay";\
+          };' kernel/$DTS_FILE
+
+      - name: Compile kernel
+        run: |
+          cd kernel
+          make O=../${{ env.OUTPUT_DIR }} ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE $KERNEL_DEFCONFIG
+          make -j$(nproc) O=../${{ env.OUTPUT_DIR }} ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
+
+      - name: Install modules
+        run: |
+          cd kernel
+          make O=../${{ env.OUTPUT_DIR }} ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_install INSTALL_MOD_PATH=../${{ env.OUTPUT_DIR }}/rootfs
+
+      - name: Create boot partition image
+        run: |
+          cd ${{ env.OUTPUT_DIR }}
+          mkdir -p boot
+          cp arch/arm64/boot/Image boot/
+          cp arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb boot/
+          # uInitrd 可以选择生成或者使用官方的
+          mkimage -A arm -O linux -T kernel -C none -a 0x00008000 -e 0x00008000 -n "NanoPC-T4 Linux Kernel" -d boot/Image boot/uImage
+          dd if=/dev/zero of=$BOOT_IMG bs=1M count=32
+          mkfs.ext4 -F $BOOT_IMG
+          sudo mount -o loop $BOOT_IMG /mnt
+          sudo cp -r boot/* /mnt/
+          sudo umount /mnt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: boot-image
+          path: ${{ env.BOOT_IMG }}

@@ -111,37 +111,34 @@ jobs:
 
           # 生成 uImage（如果 mkimage 可用）
           if command -v mkimage >/dev/null 2>&1; then
-            mkimage -A arm -O linux -T kernel -C none -a 0x00008000 -e 0x00008000 -n "NanoPC-T4 Linux Kernel" -d "${WORK_DIR}/boot/Image" "${WORK_DIR}/boot/uImage"
+            mkimage -A arm -O linux -T kernel -C none \
+              -a 0x00008000 -e 0x00008000 \
+              -n "NanoPC-T4 Linux Kernel" \
+              -d "${WORK_DIR}/boot/Image" "${WORK_DIR}/boot/uImage"
             echo "uImage created at ${WORK_DIR}/boot/uImage"
           else
             echo "mkimage (u-boot-tools) not found; skipping uImage creation"
           fi
-
+        
           # 创建文件（覆盖写入）
-          dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=32
+          # create 128MB image
+          dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=128
           # 强制格式化 ext4
           mkfs.ext4 -F "${BOOT_IMG}"
 
-          # 确保挂载点存在
           sudo mkdir -p "${MOUNT_POINT}"
+          sudo mount -o loop "${BOOT_IMG}" "${MOUNT_POINT}"
 
-          # 挂载 loop 设备并复制文件，确保最后释放 loop
-          LOOP_DEV=$(sudo losetup --show -f "${BOOT_IMG}")
-          echo "Loop device: ${LOOP_DEV}"
-          sudo mount "${LOOP_DEV}" "${MOUNT_POINT}"
-          sudo cp -r "${WORK_DIR}/boot/." "${MOUNT_POINT}/"
+          # copy only Image + dtb
+          sudo cp "${WORK_DIR}/boot/Image" "${MOUNT_POINT}/"
+          if [ -f "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" ]; then
+            sudo cp "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" "${MOUNT_POINT}/"
+          fi
           sync
+
           sudo umount "${MOUNT_POINT}"
-          sudo losetup -d "${LOOP_DEV}"
-          echo "Boot image created and populated: ${BOOT_IMG}"
-          ls -la "${BOOT_IMG}"
-          # 列出 image 内文件（为调试，我们可以短暂挂载再查看）
-          TEMP_LOOP=$(sudo losetup --show -f "${BOOT_IMG}")
-          sudo mount "${TEMP_LOOP}" "${MOUNT_POINT}"
-          echo "Contents of boot image:"
-          ls -la "${MOUNT_POINT}"
-          sudo umount "${MOUNT_POINT}"
-          sudo losetup -d "${TEMP_LOOP}"
+          echo "boot.img created successfully: ${BOOT_IMG}"
+          ls -lh "${BOOT_IMG}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

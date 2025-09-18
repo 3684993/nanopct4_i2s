@@ -13,6 +13,19 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+
+      - name: Download custom DTS
+        run: |
+          echo "PWD: $(pwd)"
+          
+          echo "Cloning nanopct4_i2s repository for DTS"
+          git clone --depth=1 https://github.com/3684993/nanopct4_i2s.git temp_dts_repo
+          if [ ! -d "temp_dts_repo/dts" ]; then
+             echo "DTS folder not found in nanopct4_i2s repository!"
+             exit 1
+          fi  
+          ls -l
+          
       - name: Checkout kernel source
         uses: actions/checkout@v2
         with:
@@ -23,13 +36,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu device-tree-compiler
+
           
-      - name: Download custom DTS
-        run: |
-          mkdir -p dts
-          curl -L -o dts/rk3399-nanopi4-rev00.dts https://raw.githubusercontent.com/friendlyarm/kernel-rockchip/nanopi4-v4.19.y/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
-          cp dts/rk3399-nanopi4-rev00.dts arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
-      
       - name: Replace DTS with custom file
         run: |
           CUSTOM_DTS="dts/rk3399-nanopi4-rev00.dts"

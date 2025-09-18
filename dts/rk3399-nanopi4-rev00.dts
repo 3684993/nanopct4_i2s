@@ -67,6 +67,5 @@
 };
 
 &i2s1 {
-	pinctrl-0 = <&i2s0_2ch_bus>;
+	status = "okay";
 };
-

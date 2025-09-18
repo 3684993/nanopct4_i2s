@@ -64,7 +64,7 @@ jobs:
           sudo umount /mnt
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: boot-image
           path: ${{ env.BOOT_IMG }}

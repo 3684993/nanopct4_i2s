@@ -4,7 +4,6 @@
  * (http://www.friendlyarm.com)
  */
 
-
 /dts-v1/;
 #include "rk3399-nanopi4-common.dtsi"
 
@@ -66,8 +65,3 @@
 &i2s0 {
 	pinctrl-0 = <&i2s0_2ch_bus>;
 };
-
-&i2s1 {
-	status = "okay";
-};
-

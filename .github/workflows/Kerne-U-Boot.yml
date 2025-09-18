@@ -1,0 +1,84 @@
+name: Kerne U-Boot (I2S1 enabled)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git wget cpio unzip rsync bc \
+            python3 python3-pip gawk gcc g++ make cmake \
+            libncurses5-dev libncursesw5-dev libssl-dev \
+            flex bison device-tree-compiler u-boot-tools \
+            gcc-aarch64-linux-gnu
+
+      # ---------------- U-Boot ----------------
+      - name: Clone U-Boot (v2017.09)
+        run: |
+          git clone --depth 1 -b nanopi4-v2017.09 https://github.com/friendlyarm/uboot-rockchip.git
+
+      - name: Build U-Boot
+        working-directory: uboot-rockchip
+        run: |
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export ARCH=arm64
+          make nanopc_t4_defconfig
+          make -j$(nproc)
+
+      # ---------------- Kernel ----------------
+      - name: Clone Linux kernel (v4.19.y)
+        run: |
+          git clone --depth 1 -b nanopi4-v4.19.y https://github.com/friendlyarm/kernel-rockchip.git
+
+      - name: Enable I2S1 in kernel config
+        working-directory: kernel-rockchip
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make nanopi4_linux_defconfig
+          # 修改 config 启用 I2S1
+          echo "CONFIG_SND_SOC_ROCKCHIP_I2S=y" >> .config
+          echo "CONFIG_SND_SOC_ROCKCHIP_I2S1=y" >> .config
+          yes "" | make oldconfig
+
+      - name: Patch DTS for I2S1
+        working-directory: kernel-rockchip
+        run: |
+          DTS_DIR=arch/arm64/boot/dts/rockchip
+          for f in $DTS_DIR/rk3399-nanopi4-rev*.dts; do
+            sed -i 's/status = "disabled"/status = "okay"/g' $f
+          done
+          # 验证 DTS
+          for f in $DTS_DIR/rk3399-nanopi4-rev*.dts; do
+            dtc -I dts -O dtb -o /tmp/test.dtb $f || { echo "DTS syntax error in $f"; exit 1; }
+          done
+
+      - name: Build Kernel
+        working-directory: kernel-rockchip
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc) Image dtbs modules
+
+      # ---------------- Artifacts ----------------
+      - name: Upload U-Boot + Kernel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanopc_t4_kernel_uboot_i2s1
+          path: |
+            uboot-rockchip/u-boot.bin
+            kernel-rockchip/arch/arm64/boot/Image
+            kernel-rockchip/arch/arm64/boot/dts/rockchip/*.dtb
+            kernel-rockchip/modules

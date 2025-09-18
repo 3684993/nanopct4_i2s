@@ -38,7 +38,8 @@ jobs:
             
       - name: Clone kernel source
         run: |
-          git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel            
+          git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel     
+          
       - name: Setup output directory
         run: mkdir -p ${{ env.OUTPUT_DIR }}
 

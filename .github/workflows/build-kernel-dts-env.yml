@@ -40,7 +40,8 @@ jobs:
         run: |
           CUSTOM_DTS="temp_dts_repo/dts/rk3399-nanopi4-rev00.dts"
           TARGET_DTS="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts"
-          
+          echo "PWD: $(pwd)"
+          ls -alf temp_dts_repo/dts/
           if [ -f "$CUSTOM_DTS" ]; then
              echo "Replacing DTS: $CUSTOM_DTS → $TARGET_DTS"
              cp "$CUSTOM_DTS" "$TARGET_DTS"

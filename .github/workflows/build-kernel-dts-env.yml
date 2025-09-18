@@ -17,15 +17,13 @@ jobs:
       - name: Download custom DTS
         run: |
           echo "PWD: $(pwd)"
-          
           echo "Cloning nanopct4_i2s repository for DTS"
           git clone --depth=1 https://github.com/3684993/nanopct4_i2s.git temp_dts_repo
           if [ ! -d "temp_dts_repo/dts" ]; then
              echo "DTS folder not found in nanopct4_i2s repository!"
              exit 1
           fi  
-          ls -l ../
-          
+          ls -alf temp_dts_repo
       - name: Checkout kernel source
         uses: actions/checkout@v2
         with:
@@ -40,7 +38,7 @@ jobs:
           
       - name: Replace DTS with custom file
         run: |
-          CUSTOM_DTS="dts/rk3399-nanopi4-rev00.dts"
+          CUSTOM_DTS="temp_dts_repo/dts/rk3399-nanopi4-rev00.dts"
           TARGET_DTS="arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts"
           
           if [ -f "$CUSTOM_DTS" ]; then

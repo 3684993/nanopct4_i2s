@@ -1,0 +1,62 @@
+name: Build NanoPC-T4 (Minimal)
+
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_REPO: https://github.com/friendlyarm/kernel-rockchip
+  KERNEL_BRANCH: nanopi4-v4.19.y
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: output
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            bison flex libssl-dev \
+            libncurses5-dev \
+            device-tree-compiler \
+            curl git
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel
+
+      - name: Copy custom DTS (if exists)
+        run: |
+          if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            echo "Replacing DTS with custom version..."
+            cp dts/rk3399-nanopi4-rev00.dts kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          else
+            echo "Using default DTS from kernel repo."
+          fi
+
+      - name: Build kernel
+        working-directory: kernel
+        run: |
+          make $KERNEL_DEFCONFIG
+          make -j$(nproc) Image dtbs modules
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p $OUTPUT_DIR
+          cp kernel/arch/arm64/boot/Image $OUTPUT_DIR/
+          cp kernel/arch/arm64/boot/dts/rockchip/*.dtb $OUTPUT_DIR/
+          make -C kernel INSTALL_MOD_PATH=$PWD/$OUTPUT_DIR modules_install
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: nanopc-t4-kernel
+          path: output

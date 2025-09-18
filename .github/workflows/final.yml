@@ -34,7 +34,7 @@ jobs:
             bison flex libssl-dev \
             libncurses5-dev \
             device-tree-compiler \
-            curl git u-boot-tools losetup
+            curl git u-boot-tools
 
       - name: Clone kernel source
         run: |

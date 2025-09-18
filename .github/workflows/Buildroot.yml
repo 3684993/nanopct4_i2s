@@ -1,4 +1,4 @@
-name: Build FriendlyARM Buildroot for NanoPC-T4 (RK3399)
+name: Buildroot for NanoPC-T4 (RK3399)
 
 on:
   workflow_dispatch:    # 允许手动触发
@@ -40,6 +40,17 @@ jobs:
           
           # 注意：我们跳过了 git-gui 和 gitk，因为它们不是构建必需的
           # 并且会导致版本冲突
+              # 安装和设置 repo 工具
+              
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+      
+          # 验证安装
+          which repo || echo "repo not found in PATH"
+          ls -la ~/bin/repo || echo "repo file not downloaded"
+          ~/bin/repo --version || echo "cannot execute repo"
           
           echo "依赖安装完成"
 

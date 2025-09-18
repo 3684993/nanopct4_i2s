@@ -9,6 +9,7 @@ env:
   KERNEL_DEFCONFIG: nanopi4_linux_defconfig
   OUTPUT_DIR: output
   DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+  LOCALVERSION: "" # 避免 Git 仓库缺失报错
   BOOT_IMG: output/boot.img
 
 jobs:
@@ -22,6 +23,7 @@ jobs:
           repository: friendlyarm/kernel-rockchip
           ref: nanopi4-v4.19.y
           path: kernel
+          fetch-depth: 0  # 完整 Git 仓库，避免内核 setlocalversion 报错
 
       - name: Install required packages
         run: |
@@ -37,12 +39,14 @@ jobs:
       - name: Setup output directory
         run: mkdir -p ${{ env.OUTPUT_DIR }}
 
-      - name: Replace DTS to enable I2S1
+      - name: Copy custom DTS (if exists)
         run: |
-          sed -i '/&i2s0/ a\
-          &i2s1 {\
-              status = "okay";\
-          };' kernel/$DTS_FILE
+          if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            echo "Replacing DTS with custom version..."
+            cp dts/rk3399-nanopi4-rev00.dts kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          else
+            echo "Using default DTS from kernel repo."
+          fi
 
       - name: Compile kernel
         run: |

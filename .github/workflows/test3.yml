@@ -30,6 +30,15 @@ jobs:
       - name: Clone FriendlyElec Kernel
         run: |
           git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel
+      
+      - name: Copy custom DTS
+        run: |
+          if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            echo "Using custom DTS from repository..."
+            cp dts/rk3399-nanopi4-rev00.dts kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          else
+            echo "Custom DTS not found, using default from kernel repo."
+          fi
 
       - name: Clean Kernel Tree
         run: |

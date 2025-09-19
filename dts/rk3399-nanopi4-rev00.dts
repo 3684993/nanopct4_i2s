@@ -66,31 +66,38 @@
 	pinctrl-0 = <&i2s0_2ch_bus>;
 };
 
+/* 新增 i2s1 pinctrl 定义 */
+i2s1_2ch_bus: i2s1-2ch-pins {
+	pins = "I2S1_SCLK", "I2S1_LRCK", "I2S1_SDI0", "I2S1_SDO0";
+	function = "i2s1";
+	bias-pull-up;
+};
+
 &i2s1 {
-    status = "okay";
-    pinctrl-names = "default";
-    pinctrl-0 = <&i2s1_2ch_bus>;  // 确保对应 i2s1 pinmux 已定义
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s1_2ch_bus>;  // 确保对应 i2s1 pinmux 已定义
 };
 
 inmp441_codec: inmp441 {
-    compatible = "dummy-codec";
-    #sound-dai-cells = <0>;
-    status = "okay";
+	compatible = "dummy-codec";
+	#sound-dai-cells = <0>;
+	status = "okay";
 };
 
 sound_inmp441: sound_inmp441 {
-    compatible = "simple-audio-card";
-    simple-audio-card,name = "INMP441-Mic";
-    simple-audio-card,format = "i2s";
-    simple-audio-card,bitclock-master = <&dailink0_master>;
-    simple-audio-card,frame-master = <&dailink0_master>;
+	compatible = "simple-audio-card";
+	simple-audio-card,name = "INMP441-Mic";
+	simple-audio-card,format = "i2s";
+	simple-audio-card,bitclock-master = <&dailink0_master>;
+	simple-audio-card,frame-master = <&dailink0_master>;
 
-    dailink0_master: simple-audio-card,cpu {
-        sound-dai = <&i2s1>;
-    };
+	dailink0_master: simple-audio-card,cpu {
+    	sound-dai = <&i2s1>;
+	};
 
-    simple-audio-card,codec {
-        sound-dai = <&inmp441_codec>;
-    };
+	simple-audio-card,codec {
+    	sound-dai = <&inmp441_codec>;
+	};
 };
 

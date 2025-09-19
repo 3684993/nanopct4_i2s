@@ -1,0 +1,149 @@
+name: INMP441 Boot Image
+
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  # 使用绝对路径，避免 cd 导致相对路径问题
+  OUTPUT_DIR: ${{ github.workspace }}/output
+  DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+  LOCALVERSION: "" # 避免 Git 仓库缺失报错
+  BOOT_IMG: ${{ github.workspace }}/output/boot.img
+
+  KERNEL_REPO: https://github.com/friendlyarm/kernel-rockchip
+  KERNEL_BRANCH: nanopi4-v4.19.y
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 完整 Git 仓库，避免内核 setlocalversion 报错
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            bison flex libssl-dev \
+            libncurses5-dev \
+            device-tree-compiler \
+            curl git u-boot-tools
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel
+
+      - name: Setup output directory
+        run: |
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+
+      - name: Copy custom DTS (if exists)
+        run: |
+          if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            echo "Replacing DTS with custom version..."
+            cp dts/rk3399-nanopi4-rev00.dts kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          else
+            echo "Using default DTS from kernel repo."
+          fi
+
+      - name: Compile kernel
+        run: |
+          set -euo pipefail
+          cd kernel
+          echo "Kernel defconfig: $KERNEL_DEFCONFIG"
+          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE $KERNEL_DEFCONFIG
+          make -j$(nproc) O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
+
+      - name: Install modules
+        run: |
+          set -euo pipefail
+          cd kernel
+          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_install INSTALL_MOD_PATH="${{ env.OUTPUT_DIR }}/rootfs"
+
+      - name: Inspect build outputs (debug)
+        run: |
+          echo "Listing output directory:"
+          ls -la "${{ env.OUTPUT_DIR }}"
+          echo "Listing kernel artifacts:"
+          ls -la "${{ env.OUTPUT_DIR }}/arch/arm64/boot" || true
+          echo "Listing dtbs rockchip folder:"
+          ls -la "${{ env.OUTPUT_DIR }}/arch/arm64/boot/dts/rockchip" || true
+
+      - name: Create boot partition image
+        env:
+          WORK_DIR: ${{ env.OUTPUT_DIR }}
+          BOOT_IMG: ${{ env.BOOT_IMG }}
+        run: |
+          set -euo pipefail
+
+          WORK_DIR="${WORK_DIR}"
+          BOOT_IMG="${BOOT_IMG}"
+          MOUNT_POINT="/mnt/bootimg"
+
+          echo "WORK_DIR: $WORK_DIR"
+          echo "BOOT_IMG: $BOOT_IMG"
+
+          mkdir -p "${WORK_DIR}/boot"
+
+          # 检查 Image
+          if [ ! -f "${WORK_DIR}/arch/arm64/boot/Image" ]; then
+            echo "ERROR: Kernel Image not found at ${WORK_DIR}/arch/arm64/boot/Image"
+            ls -la "${WORK_DIR}/arch/arm64/boot" || true
+            exit 1
+          fi
+
+          cp "${WORK_DIR}/arch/arm64/boot/Image" "${WORK_DIR}/boot/"
+
+          # 尝试复制 dtb（如果存在）
+          if [ -f "${WORK_DIR}/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb" ]; then
+            cp "${WORK_DIR}/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb" "${WORK_DIR}/boot/"
+          else
+            echo "Warning: dtb not found at ${WORK_DIR}/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb"
+            ls -la "${WORK_DIR}/arch/arm64/boot/dts/rockchip" || true
+          fi
+
+          # 生成 uImage（如果 mkimage 可用）
+          if command -v mkimage >/dev/null 2>&1; then
+            mkimage -A arm -O linux -T kernel -C none \
+              -a 0x00008000 -e 0x00008000 \
+              -n "NanoPC-T4 Linux Kernel" \
+              -d "${WORK_DIR}/boot/Image" "${WORK_DIR}/boot/uImage"
+            echo "uImage created at ${WORK_DIR}/boot/uImage"
+          else
+            echo "mkimage (u-boot-tools) not found; skipping uImage creation"
+          fi
+        
+          # 创建固定大小的 64MB boot.img
+          dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=64
+          # 格式化为 vfat/ ext4
+          mkfs.vfat "${BOOT_IMG}"
+           # 格式化为 ext4
+          #mkfs.ext4 -F "${BOOT_IMG}"
+
+          sudo mkdir -p "${MOUNT_POINT}"
+          sudo mount -o loop "${BOOT_IMG}" "${MOUNT_POINT}"
+
+          # 只复制 Image 和 dtb
+          sudo cp "${WORK_DIR}/boot/Image" "${MOUNT_POINT}/"
+          if [ -f "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" ]; then
+            sudo cp "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" "${MOUNT_POINT}/"
+          fi
+
+          sync
+          sudo umount "${MOUNT_POINT}"
+          echo "boot.img created successfully (fixed 64MB): ${BOOT_IMG}"
+          ls -lh "${BOOT_IMG}"
+
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image
+          path: ${{ env.BOOT_IMG }}

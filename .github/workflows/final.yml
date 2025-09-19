@@ -121,7 +121,7 @@ jobs:
           fi
         
           # 创建固定大小的 64MB boot.img
-          dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=128
+          dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=64
           # 格式化为 vfat/ ext4
           mkfs.vfat "${BOOT_IMG}"
            # 格式化为 ext4
@@ -138,7 +138,7 @@ jobs:
 
           sync
           sudo umount "${MOUNT_POINT}"
-          echo "boot.img created successfully (fixed 128MB): ${BOOT_IMG}"
+          echo "boot.img created successfully (fixed 64MB): ${BOOT_IMG}"
           ls -lh "${BOOT_IMG}"
 
 

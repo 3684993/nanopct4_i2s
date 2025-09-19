@@ -8,7 +8,7 @@ env:
   CROSS_COMPILE: aarch64-linux-gnu-
   KERNEL_DEFCONFIG: nanopi4_linux_defconfig
   # 使用绝对路径，避免 cd 导致相对路径问题
-  OUTPUT_DIR: ${{ github.workspace }}/output
+  OUTPUT_DIR: ${{ github.workspace }}/bootoutput
   DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
   LOCALVERSION: "" # 避免 Git 仓库缺失报错
   BOOT_IMG: ${{ github.workspace }}/output/boot.img
@@ -36,6 +36,12 @@ jobs:
             device-tree-compiler \
             curl git u-boot-tools
 
+      - name: Clean workspace
+        run: |
+          sudo rm -rf output
+          sudo rm -rf kernel
+          sudo rm -rf .ccache
+    
       - name: Clone kernel source
         run: |
           git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel

@@ -13,8 +13,8 @@ env:
   LOCALVERSION: "" # 避免 Git 仓库缺失报错
   BOOT_IMG: ${{ github.workspace }}/output/boot.img
 
-  KERNEL_REPO: https://github.com/friendlyarm/kernel-rockchip
-  KERNEL_BRANCH: nanopi4-v4.19.y
+  KERNEL_REPO: https://github.com/rockchip-linux/kernel
+  KERNEL_BRANCH: develop-4.19-rt87
 
 jobs:
   build:

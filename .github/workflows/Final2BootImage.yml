@@ -49,6 +49,12 @@ jobs:
           else
             echo "Using default DTS from kernel repo."
           fi
+      - name: Clean Kernel Tree
+        run: |
+          cd kernel
+          git clean -xfd
+          git reset --hard
+  
       - name: Compile kernel
         run: |
           set -euo pipefail

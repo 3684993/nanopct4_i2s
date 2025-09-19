@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           cd kernel
           echo "Cleaning previous build..."
-          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE clean
+          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE mrproper
     
           echo "Kernel defconfig: $KERNEL_DEFCONFIG"
           make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE $KERNEL_DEFCONFIG

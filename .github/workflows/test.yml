@@ -1,4 +1,4 @@
-name: Test Kernel Build
+name: Test Kernel Debug Build
 
 on:
   workflow_dispatch:
@@ -54,7 +54,7 @@ jobs:
             echo "Using default DTS from kernel repo."
           fi
 
-      - name: Compile kernel
+      - name: Compile kernel (verbose, single-thread)
         run: |
           set -euo pipefail
           cd kernel
@@ -63,13 +63,13 @@ jobs:
     
           echo "Kernel defconfig: $KERNEL_DEFCONFIG"
           make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE $KERNEL_DEFCONFIG
-          make -j$(nproc) O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
+          make -j1 V=1 O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
 
       - name: Install modules
         run: |
           set -euo pipefail
           cd kernel
-          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_install INSTALL_MOD_PATH="${{ env.OUTPUT_DIR }}/rootfs"
+          make -j1 V=1 O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_install INSTALL_MOD_PATH="${{ env.OUTPUT_DIR }}/rootfs"
 
       - name: Inspect build outputs (debug)
         run: |
@@ -83,7 +83,7 @@ jobs:
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build
+          name: kernel-debug-build
           path: |
             ${{ env.OUTPUT_DIR }}/arch/arm64/boot/Image
             ${{ env.OUTPUT_DIR }}/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb

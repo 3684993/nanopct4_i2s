@@ -8,7 +8,7 @@ env:
   CROSS_COMPILE: aarch64-linux-gnu-
   KERNEL_DEFCONFIG: rockchip_linux_defconfig
   # 使用绝对路径，避免 cd 导致相对路径问题
-  OUTPUT_DIR: ${{ github.workspace }}/output
+  OUTPUT_DIR: ${{ github.workspace }}/rockchipoutput
   DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
   LOCALVERSION: "" # 避免 Git 仓库缺失报错
   BOOT_IMG: ${{ github.workspace }}/output/boot.img

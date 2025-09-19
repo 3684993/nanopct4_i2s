@@ -120,7 +120,7 @@ jobs:
             echo "mkimage (u-boot-tools) not found; skipping uImage creation"
           fi
         
-          # 创建固定大小的 128MB boot.img
+          # 创建固定大小的 64MB boot.img
           dd if=/dev/zero of="${BOOT_IMG}" bs=1M count=128
           # 格式化为 vfat/ ext4
           mkfs.vfat "${BOOT_IMG}"

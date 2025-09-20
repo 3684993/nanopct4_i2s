@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5 #1PY99lQ_XWzMzBT560scon8_tnELzF9Lq
+  ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
   ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
   CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
 
@@ -58,6 +58,7 @@ jobs:
       - name: Clone sd-fuse_rk3399
         run: |
           git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+          # ✅ 确保 out 目录存在
           mkdir -p sd-fuse_rk3399/out
           ls -lh sd-fuse_rk3399
 
@@ -85,7 +86,8 @@ jobs:
       # 9. Build Kernel
       - name: Build Kernel
         run: |
-          mkdir -p $GITHUB_WORKSPACE/sd-fuse_rk3399/out
+          # ✅ 确保 out 目录存在
+          mkdir -p sd-fuse_rk3399/out
           KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
 
       # 10. Build Kernel headers
@@ -103,7 +105,8 @@ jobs:
       # 12. Build final SD card image
       - name: Build final SD image
         run: |
-          mkdir -p $GITHUB_WORKSPACE/sd-fuse_rk3399/out
+          # ✅ 确保 out 目录存在
+          mkdir -p sd-fuse_rk3399/out
           cd sd-fuse_rk3399
           ./mk-sd-image.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
           ls -lh out/

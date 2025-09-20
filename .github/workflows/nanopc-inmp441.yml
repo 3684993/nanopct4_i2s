@@ -1,11 +1,5 @@
 name: Build Nano Inmp441 Final
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:

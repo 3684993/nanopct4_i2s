@@ -5,11 +5,15 @@ on:
 env:
   ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
   ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
+  ROOTFS_DIR_NAME: ubuntu-focal-desktop-arm64
   CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # 作为 fallback，脚本里也会设置 CROSS_COMPILE 到 GITHUB_ENV
+      ARCH: arm64
 
     steps:
       - name: Checkout repository
@@ -17,24 +21,83 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install build dependencies and cross compiler
+      - name: Install apt dependencies (common)
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             git wget curl unzip bc python3-pip python3 \
             build-essential device-tree-compiler bison flex libssl-dev \
             make ncurses-dev gawk tar xz-utils cpio rsync file aria2
-          # 安装系统 aarch64 交叉编译器（较稳定）
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           pip3 install --upgrade pip
           pip3 install gdown
-          # 导出 CROSS_COMPILE / ARCH 给后续 steps 使用
+
+      # -------------------------
+      # 安装并配置 FriendlyARM prebuilts toolchain (11.3-aarch64)
+      # 这一步确保 aarch64-gcc-11.3 可用，并创建兼容的 aarch64-linux-gnu-* 名称。
+      # -------------------------
+      - name: Install FriendlyARM prebuilts toolchain and create symlinks
+        run: |
+          set -euo pipefail
+          # clone并解压官方预编译交叉编译器到根目录（会解出 /opt/FriendlyARM/toolchain/...）
+          rm -rf prebuilts || true
+          git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+          cd prebuilts/gcc-x64
+          sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
+
+          # 找到 toolchain 基目录（兼容不同内部结构）
+          TOOLCHAIN_BASE="/opt/FriendlyARM/toolchain/11.3-aarch64"
+          if [ ! -d "$TOOLCHAIN_BASE" ]; then
+            echo "❌ Toolchain base not found at $TOOLCHAIN_BASE"
+            echo "ls /opt/FriendlyARM:"
+            ls -al /opt/FriendlyARM || true
+            exit 1
+          fi
+
+          # 查找第一个 bin 目录（通常在 aarch64-*-linux-gnu/bin）
+          BIN_DIR=$(find "$TOOLCHAIN_BASE" -type d -name "bin" | head -n1 || true)
+          if [ -z "${BIN_DIR}" ]; then
+            echo "❌ Could not find bin directory under $TOOLCHAIN_BASE"
+            find "$TOOLCHAIN_BASE" -maxdepth 3 -type d -print || true
+            exit 1
+          fi
+          echo "Toolchain bin dir: $BIN_DIR"
+
+          # 把 toolchain bin 加入 PATH（对后续 steps 生效）
+          echo "$BIN_DIR" >> $GITHUB_PATH
+          # 设置 CROSS_COMPILE 到 GITHUB_ENV（脚本会使用）
           echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "ARCH=arm64" >> $GITHUB_ENV
-          # quick verify
-          aarch64-linux-gnu-gcc --version || true
 
-      # ---- rootfs 缓存：尝试还原 cached_rootfs ----
+          # 查找 bin 里实际的 gcc 前缀，比如 aarch64-cortexa53-linux-gnu-gcc
+          SRC_GCC=$(find "$BIN_DIR" -maxdepth 1 -type f -name '*-gcc' | head -n1 || true)
+          if [ -z "$SRC_GCC" ]; then
+            echo "❌ No gcc binary found in $BIN_DIR"
+            ls -lah "$BIN_DIR" || true
+            exit 1
+          fi
+          SRC_PREFIX=$(basename "$SRC_GCC" | sed 's/-gcc$//')
+          echo "Detected toolchain prefix: $SRC_PREFIX"
+
+          # 为常用工具创建兼容的 aarch64-linux-gnu-* symlink（写到 /usr/local/bin）
+          TOOLS="gcc g++ ld ar nm objcopy objdump strip ranlib readelf"
+          for t in $TOOLS; do
+            SRC="$BIN_DIR/${SRC_PREFIX}-$t"
+            DST="/usr/local/bin/aarch64-linux-gnu-$t"
+            if [ -f "$SRC" ]; then
+              sudo ln -sf "$SRC" "$DST"
+            else
+              echo "⚠️ $SRC not found, skipping symlink for $t"
+            fi
+          done
+
+          # verify
+          echo "Verify aarch64-linux-gnu-gcc:"
+          aarch64-linux-gnu-gcc --version || (echo "❌ aarch64-linux-gnu-gcc not found in PATH" && exit 1)
+
+      # -------------------------
+      # rootfs cache: 尝试恢复 cached_rootfs
+      # -------------------------
       - name: Restore rootfs cache
         id: cache-rootfs
         uses: actions/cache@v3
@@ -42,12 +105,11 @@ jobs:
           path: cached_rootfs
           key: rootfs-${{ env.ROOTFS_TGZ_ID }}-${{ runner.os }}
 
-      # ---- 准备 rootfs：若 cache 有则恢复，否则下载并解压到工作区，同时写入 cached_rootfs 以便缓存 ----
       - name: Prepare rootfs (restore or download)
         id: prepare-rootfs
         run: |
           set -euo pipefail
-          # 如果 cache 已命中并包含内容，复制第一个子目录回工作区
+          # 如果 cache 命中，复制第一个子目录回工作区
           if [ -d "cached_rootfs" ] && [ "$(ls -A cached_rootfs || true)" ]; then
             echo "✅ rootfs restored from cache"
             EXTRACTED_PATH=$(ls -d cached_rootfs/* | head -n1)
@@ -56,13 +118,12 @@ jobs:
               echo "Workspace already contains $BASENAME, skipping copy"
             else
               cp -a "$EXTRACTED_PATH" .
-              echo "Copied $EXTRACTED_PATH -> ./$BASENAME"
             fi
             echo "rootfs_dir=$BASENAME" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # 若 cache 没命中，检查工作区是否已有匹配的目录（可能手动放置）
+          # 若工作区已有解压目录则直接使用
           EXISTING=$(ls -d ubuntu-focal-desktop* 2>/dev/null | head -n1 || true)
           if [ -n "$EXISTING" ]; then
             echo "✅ Found existing rootfs in workspace: $EXISTING"
@@ -72,34 +133,30 @@ jobs:
             exit 0
           fi
 
-          # 否则从 Google Drive 下载并解压
-          echo "⬇️ Downloading rootfs from Google Drive (id=${ROOTFS_TGZ_ID}) ..."
+          # cache 未命中且工作区无 rootfs，才从 Google Drive 下载并解压
+          echo "⬇️ Rootfs cache miss — downloading from Google Drive (id=${ROOTFS_TGZ_ID}) ..."
           gdown "https://drive.google.com/uc?id=${ROOTFS_TGZ_ID}&export=download" -O ${ROOTFS_TGZ_FILE}
           if [ ! -f "${ROOTFS_TGZ_FILE}" ]; then
             echo "❌ Download failed: ${ROOTFS_TGZ_FILE} not found"
             exit 1
           fi
           tar xvzf ${ROOTFS_TGZ_FILE}
-          # 识别解压出的目录（匹配 ubuntu-focal-desktop*）
           EXTRACTED=$(ls -d ubuntu-focal-desktop* 2>/dev/null | head -n1 || true)
           if [ -z "$EXTRACTED" ]; then
             echo "❌ Could not find extracted rootfs directory after tar"
             ls -al
             exit 1
           fi
-          # 将解压结果同时存入 cached_rootfs，便于下次 cache 使用
           mkdir -p cached_rootfs
           cp -a "$EXTRACTED" cached_rootfs/
           echo "✅ Downloaded and extracted: $EXTRACTED"
           echo "rootfs_dir=$EXTRACTED" >> $GITHUB_OUTPUT
 
-      # ---- 确保仓库根 out 存在（build 脚本可能引用 $PWD/out） ----
       - name: Ensure repository root out exists
         run: |
           mkdir -p out
           ls -ld out || true
 
-      # ---- 克隆 sd-fuse_rk3399（先清理旧目录避免残留），再创建 sd-fuse 内部 out ----
       - name: Clone sd-fuse_rk3399 and prepare sd-fuse out
         run: |
           rm -rf sd-fuse_rk3399
@@ -107,7 +164,6 @@ jobs:
           mkdir -p sd-fuse_rk3399/out
           ls -lah sd-fuse_rk3399
 
-      # ---- 克隆 kernel 并检查 DTS ----
       - name: Clone kernel
         run: |
           rm -rf kernel-rk3399
@@ -119,7 +175,6 @@ jobs:
           fi
           ls -lh kernel-rk3399/arch/arm64/boot/dts/rockchip || true
 
-      # ---- 覆盖自定义 DTS（仅复制单个文件，不删除 kernel 原 dts） ----
       - name: Copy custom DTS
         run: |
           if [ ! -f "${CUSTOM_DTS}" ]; then
@@ -134,24 +189,20 @@ jobs:
           fi
           echo "✅ Custom DTS copied: $(basename ${CUSTOM_DTS})"
 
-      # ---- Build Kernel (在 sd-fuse_rk3399 下执行) ----
       - name: Build Kernel
         run: |
           set -euo pipefail
           echo "Using CROSS_COMPILE=${CROSS_COMPILE:-<not-set>} ARCH=${ARCH:-<not-set>}"
           cd sd-fuse_rk3399
           mkdir -p out
-          echo "Running build-kernel.sh with KERNEL_SRC pointing to ../kernel-rk3399 and rootfs ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}"
           KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
 
-      # ---- Build Kernel headers ----
       - name: Build Kernel headers
         run: |
           set -euo pipefail
           cd sd-fuse_rk3399
           MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
 
-      # ---- Clone and Build U-Boot ----
       - name: Build U-Boot
         run: |
           set -euo pipefail
@@ -160,7 +211,6 @@ jobs:
           cd sd-fuse_rk3399
           UBOOT_SRC=$PWD/../uboot-rockchip ./build-uboot.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
 
-      # ---- Generate final SD image ----
       - name: Build final SD image
         run: |
           set -euo pipefail
@@ -169,7 +219,6 @@ jobs:
           ./mk-sd-image.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
           ls -lh out || true
 
-      # ---- Upload final image artifact ----
       - name: Upload SD image
         uses: actions/upload-artifact@v4
         with:

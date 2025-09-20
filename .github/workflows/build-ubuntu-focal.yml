@@ -32,7 +32,7 @@ jobs:
       - name: Download rootfs from Google Drive
         run: |
           echo "⬇️ Downloading ubuntu-focal-desktop rootfs..."
-          gdown "https://drive.google.com/file/d/1PY99lQ_XWzMzBT560scon8_tnELzF9Lq/view“
+          gdown "https://drive.google.com/file/d/1PY99lQ_XWzMzBT560scon8_tnELzF9Lq/view?usp=drive_link“
           ls -lh ${ROOTFS_TGZ_FILE}
 
       # 4. 解压 rootfs

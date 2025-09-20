@@ -1,125 +1,62 @@
-name: Build Ubuntu Focal Image (RK3399 Full)
+name: Final Build RK3399 Image
 
 on:
   workflow_dispatch:
 
-env:
-  ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
-  ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
-  ROOTFS_DIR_NAME: ubuntu-focal-desktop-arm64
-  CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
-  CROSS_COMPILE: /usr/local/gcc-11.3-aarch64/bin/aarch64-linux-gnu-
-  ARCH: arm64
-
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
-      # 1. Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      # 1. Checkout repo
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      # 2. 安装依赖和 aarch64 GCC 11.3
-      - name: Install build dependencies and aarch64 GCC
+      # 2. 安装依赖
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bison flex libssl-dev make python3 bc git fakeroot \
-            build-essential ncurses-dev gawk wget tar xz-utils cpio unzip rsync file aria2
-          pip install gdown
-          # 安装 aarch64 GCC 11.3
+          sudo apt-get install -y git wget curl unzip bc python3 build-essential device-tree-compiler bison flex libssl-dev
+
+      # 3. 下载并解压 FriendlyARM 工具链
+      - name: Setup Toolchain
+        run: |
           git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
           cd prebuilts/gcc-x64
           sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
-          # 确认安装成功
-          /usr/local/gcc-11.3-aarch64/bin/aarch64-linux-gnu-gcc --version
+          echo "/opt/FriendlyARM/toolchain/11.3-aarch64/bin" >> $GITHUB_PATH
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          aarch64-linux-gnu-gcc --version
 
-      # 3. 缓存 rootfs
-      - name: Restore rootfs cache
-        id: cache-rootfs
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/$ROOTFS_DIR_NAME
-          key: rootfs-${{ env.ROOTFS_TGZ_ID }}-${{ runner.os }}
-
-      # 4. 下载 rootfs（仅当缓存未命中）
-      - name: Download rootfs if missing
-        if: steps.cache-rootfs.outputs.cache-hit != 'true'
+      # 4. 确保 out 目录存在
+      - name: Prepare out directories
         run: |
-          echo "⬇️ Rootfs cache miss, downloading from Google Drive..."
-          gdown "https://drive.google.com/uc?id=${ROOTFS_TGZ_ID}&export=download" -O ${ROOTFS_TGZ_FILE}
-          tar xvzf ${ROOTFS_TGZ_FILE}
-          ls -lh
-
-      # 5. 确认 rootfs 目录
-      - name: Detect rootfs directory
-        id: detect-rootfs
-        run: |
-          ROOTFS_DIR=$(ls -d */ | grep "ubuntu-focal-desktop" | head -n1 | sed 's#/##')
-          if [ -z "$ROOTFS_DIR" ]; then
-            echo "❌ ERROR: Rootfs directory not found!"
-            exit 1
-          fi
-          echo "✅ Using rootfs directory: $ROOTFS_DIR"
-          echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
-
-      # 6. Clone sd-fuse_rk3399
-      - name: Clone sd-fuse_rk3399
-        run: |
-          rm -rf sd-fuse_rk3399
-          git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+          mkdir -p out
           mkdir -p sd-fuse_rk3399/out
-          ls -lh sd-fuse_rk3399
 
-      # 7. Clone kernel
-      - name: Clone kernel
+      # 5. Clone sd-fuse
+      - name: Clone sd-fuse
         run: |
-          git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
-          if [ ! -d "kernel-rk3399/arch/arm64/boot/dts/rockchip" ]; then
-            echo "❌ ERROR: Kernel DTS folder not found!"
-            exit 1
+          if [ ! -d sd-fuse_rk3399 ]; then
+            git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
           fi
 
-      # 8. 覆盖自定义 DTS
-      - name: Copy custom DTS
+      # 6. 复制自定义 DTS
+      - name: Override DTS
         run: |
-          cp $GITHUB_WORKSPACE/${CUSTOM_DTS} kernel-rk3399/arch/arm64/boot/dts/rockchip/
-          echo "✅ Custom DTS copied"
+          cp dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
 
-      # 9. Build Kernel
-      - name: Build Kernel
-        run: |
-          cd sd-fuse_rk3399
-          mkdir -p out
-          KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
-
-      # 10. Build Kernel headers
-      - name: Build Kernel headers
+      # 7. 编译
+      - name: Build kernel & image
         run: |
           cd sd-fuse_rk3399
-          MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
-          KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
+          ./build-kernel.sh nanopi4
+          ./mkimage.sh nanopi4
 
-      # 11. Clone and Build U-Boot
-      - name: Build U-Boot
-        run: |
-          git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
-          cd sd-fuse_rk3399
-          UBOOT_SRC=$PWD/../uboot-rockchip ./build-uboot.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
-
-      # 12. Build final SD card image
-      - name: Build final SD image
-        run: |
-          cd sd-fuse_rk3399
-          mkdir -p out
-          ./mk-sd-image.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
-          ls -lh out/
-
-      # 13. Upload SD image artifact
-      - name: Upload SD image
-        uses: actions/upload-artifact@v4
+      # 8. 上传 Artifact
+      - name: Upload image
+        uses: actions/upload-artifact@v3
         with:
-          name: rk3399-sd-image
+          name: rk3399-image
           path: sd-fuse_rk3399/out/*.img

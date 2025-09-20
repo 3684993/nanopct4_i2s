@@ -23,12 +23,15 @@ jobs:
 
       - name: Setup environment variables
         run: |
-          echo "export PATH=/opt/FriendlyARM/toolchain/11.3-aarch64/bin:\$PATH" >> $GITHUB_ENV
-          echo "export CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
-          echo "export ARCH=arm64" >> $GITHUB_ENV
+          echo "PATH=/opt/FriendlyARM/toolchain/11.3-aarch64/bin:$PATH" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
 
-      - name: Verify toolchain
+      - name: Verify toolchain (immediate)
         run: |
+          export PATH=/opt/FriendlyARM/toolchain/11.3-aarch64/bin:$PATH
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export ARCH=arm64
           echo "PATH = $PATH"
-          which aarch64-linux-gnu-gcc || echo "❌ aarch64-linux-gnu-gcc not found"
-          aarch64-linux-gnu-gcc --version || echo "❌ failed to run aarch64-linux-gnu-gcc"
+          which aarch64-linux-gnu-gcc
+          aarch64-linux-gnu-gcc --version

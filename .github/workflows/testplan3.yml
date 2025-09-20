@@ -1,0 +1,63 @@
+name: Test3 Kernel Build Out Folder (方案3)
+
+on:
+  workflow_dispatch:
+
+env:
+  ROOTFS_DIR: ubuntu-focal-desktop-arm64  # 假设 rootfs 已经解压好
+  CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
+
+jobs:
+  test-out:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. 安装依赖
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu bison flex libssl-dev \
+            make python3 bc git fakeroot build-essential ncurses-dev \
+            gawk wget tar xz-utils cpio unzip rsync file aria2
+
+      # 3. 确保 out 目录存在（方案 3）
+      - name: Ensure out directories exist
+        run: |
+          mkdir -p out
+          mkdir -p sd-fuse_rk3399/out
+          echo "✅ Out directories prepared"
+          ls -lh
+
+      # 4. Clone sd-fuse_rk3399
+      - name: Clone sd-fuse_rk3399
+        run: git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+
+      # 5. Clone kernel 并检查 DTS
+      - name: Clone kernel
+        run: |
+          git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+          if [ ! -d "kernel-rk3399/arch/arm64/boot/dts/rockchip" ]; then
+            echo "❌ ERROR: Kernel DTS folder not found!"
+            exit 1
+          fi
+          ls kernel-rk3399/arch/arm64/boot/dts/rockchip
+
+      # 6. 覆盖自定义 DTS
+      - name: Copy custom DTS
+        run: |
+          cp $GITHUB_WORKSPACE/${CUSTOM_DTS} kernel-rk3399/arch/arm64/boot/dts/rockchip/
+          echo "✅ Custom DTS copied"
+
+      # 7. 测试 kernel build（方案 3）
+      - name: Test Build Kernel
+        run: |
+          echo "Using out directories:"
+          echo "  Root out: $(pwd)/out"
+          echo "  sd-fuse out: $(pwd)/sd-fuse_rk3399/out"
+          KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh $ROOTFS_DIR

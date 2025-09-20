@@ -1,6 +1,11 @@
 name: GROK
-
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -21,7 +26,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y git build-essential crossbuild-essential-arm64 \
-          bc kmod libncurses-dev flex bison libssl-dev tar
+          bc kmod libncurses-dev flex bison libssl-dev tar \
+          libelf-dev device-tree-compiler
+
+    # Install aarch64-gcc-11.3 toolchain
+    - name: Install aarch64-gcc-11.3
+      run: |
+        git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+        cd prebuilts/gcc-x64
+        sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
 
     # Clone and compile the kernel
     - name: Compile Kernel

@@ -15,7 +15,7 @@ jobs:
     steps:
       # 1. Checkout repository (for DTS and scripts)
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2. Install dependencies
       - name: Install dependencies
@@ -85,7 +85,7 @@ jobs:
 
       # 11. Upload artifact
       - name: Upload SD image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rk3399-sd-image
           path: sd-fuse_rk3399/out/*.img

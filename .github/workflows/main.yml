@@ -1,0 +1,34 @@
+name: Test FriendlyARM Toolchain
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-toolchain:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev libelf-dev bc wget xz-utils git
+
+      - name: Download and extract FriendlyARM toolchain
+        run: |
+          git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+          cd prebuilts/gcc-x64
+          sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
+
+      - name: Setup environment variables
+        run: |
+          echo "export PATH=/opt/FriendlyARM/toolchain/11.3-aarch64/bin:\$PATH" >> $GITHUB_ENV
+          echo "export CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "export ARCH=arm64" >> $GITHUB_ENV
+
+      - name: Verify toolchain
+        run: |
+          echo "PATH = $PATH"
+          which aarch64-linux-gnu-gcc || echo "❌ aarch64-linux-gnu-gcc not found"
+          aarch64-linux-gnu-gcc --version || echo "❌ failed to run aarch64-linux-gnu-gcc"

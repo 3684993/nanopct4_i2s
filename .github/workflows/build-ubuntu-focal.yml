@@ -1,0 +1,91 @@
+name: Build Ubuntu Focal Image (RK3399)
+
+on:
+  workflow_dispatch:
+
+env:
+  ROOTFS_NAME: ubuntu-focal-desktop-4.19-arm64
+  FILE_ID: 1PY99lQ_XWzMzBT560scon8_tnELzF9Lq
+  ROOTFS_TGZ: ubuntu-focal-desktop-arm64-images.tgz
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository (for DTS and scripts)
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 2. Install dependencies
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu bison flex libssl-dev \
+            make python3 bc git fakeroot build-essential ncurses-dev \
+            gawk wget tar xz-utils cpio unzip rsync file aria2
+          pip install gdown
+
+      # 3. Download rootfs image (Google Drive)
+      - name: Download rootfs
+        run: |
+          echo "⬇️ Downloading ${ROOTFS_NAME} rootfs..."
+          gdown "https://drive.google.com/uc?id=${FILE_ID}&export=download" -O ${ROOTFS_TGZ}
+
+          echo "📦 Checking file..."
+          ls -lh ${ROOTFS_TGZ}
+
+      # 4. Extract rootfs
+      - name: Extract rootfs
+        run: |
+          tar xvzf ${ROOTFS_TGZ}
+          ls -lh
+
+      # 5. Verify target rootfs directory exists
+      - name: Pre-check rootfs directory
+        run: |
+          if [ ! -d "${ROOTFS_NAME}" ]; then
+            echo "❌ ERROR: Rootfs directory ${ROOTFS_NAME} not found!"
+            exit 1
+          fi
+          echo "✅ Found ${ROOTFS_NAME}"
+
+      # 6. Download build scripts (sd-fuse_rk3399)
+      - name: Clone sd-fuse_rk3399
+        run: |
+          git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+          cd sd-fuse_rk3399
+          ls -lh
+
+      # 7. Download and patch kernel (with DTS override)
+      - name: Build Kernel
+        run: |
+          git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+          cp dts/rk3399-nanopi4-rev00.dts kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh ${ROOTFS_NAME}
+
+      # 8. Build Kernel headers
+      - name: Build Kernel headers
+        run: |
+          MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
+            KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh ${ROOTFS_NAME}
+
+      # 9. Build U-Boot
+      - name: Build U-Boot
+        run: |
+          git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
+          UBOOT_SRC=$PWD/uboot-rockchip ./sd-fuse_rk3399/build-uboot.sh ${ROOTFS_NAME}
+
+      # 10. Generate final SD card image
+      - name: Build final SD image
+        run: |
+          cd sd-fuse_rk3399
+          ./mk-sd-image.sh ${ROOTFS_NAME}
+          ls -lh out/
+
+      # 11. Upload artifact
+      - name: Upload SD image
+        uses: actions/upload-artifact@v3
+        with:
+          name: rk3399-sd-image
+          path: sd-fuse_rk3399/out/*.img

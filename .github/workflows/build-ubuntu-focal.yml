@@ -1,59 +1,177 @@
 name: Final Build RK3399 Image
-
 on:
   workflow_dispatch:
+
+env:
+  ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
+  ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
+  CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 2. 安装依赖 + aarch64 gcc
-      - name: Install dependencies
+      - name: Install build dependencies and cross compiler
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git wget curl unzip bc python3 \
+            git wget curl unzip bc python3-pip python3 \
             build-essential device-tree-compiler bison flex libssl-dev \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
+            make ncurses-dev gawk tar xz-utils cpio rsync file aria2
+          # 安装系统 aarch64 交叉编译器（较稳定）
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          pip3 install --upgrade pip
+          pip3 install gdown
+          # 导出 CROSS_COMPILE / ARCH 给后续 steps 使用
           echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "ARCH=arm64" >> $GITHUB_ENV
-          aarch64-linux-gnu-gcc --version
+          # quick verify
+          aarch64-linux-gnu-gcc --version || true
 
-      # 3. 确保 out 目录存在
-      - name: Prepare out directories
-        run: |
-          mkdir -p out
-          mkdir -p sd-fuse_rk3399/out
+      # ---- rootfs 缓存：尝试还原 cached_rootfs ----
+      - name: Restore rootfs cache
+        id: cache-rootfs
+        uses: actions/cache@v3
+        with:
+          path: cached_rootfs
+          key: rootfs-${{ env.ROOTFS_TGZ_ID }}-${{ runner.os }}
 
-      # 4. Clone sd-fuse
-      - name: Clone sd-fuse
+      # ---- 准备 rootfs：若 cache 有则恢复，否则下载并解压到工作区，同时写入 cached_rootfs 以便缓存 ----
+      - name: Prepare rootfs (restore or download)
+        id: prepare-rootfs
         run: |
-          if [ ! -d sd-fuse_rk3399 ]; then
-            git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+          set -euo pipefail
+          # 如果 cache 已命中并包含内容，复制第一个子目录回工作区
+          if [ -d "cached_rootfs" ] && [ "$(ls -A cached_rootfs || true)" ]; then
+            echo "✅ rootfs restored from cache"
+            EXTRACTED_PATH=$(ls -d cached_rootfs/* | head -n1)
+            BASENAME=$(basename "$EXTRACTED_PATH")
+            if [ -d "$BASENAME" ]; then
+              echo "Workspace already contains $BASENAME, skipping copy"
+            else
+              cp -a "$EXTRACTED_PATH" .
+              echo "Copied $EXTRACTED_PATH -> ./$BASENAME"
+            fi
+            echo "rootfs_dir=$BASENAME" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
-      # 5. 复制自定义 DTS
-      - name: Override DTS
-        run: |
-          cp dts/rk3399-nanopi4-rev00.dts \
-            sd-fuse_rk3399/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          # 若 cache 没命中，检查工作区是否已有匹配的目录（可能手动放置）
+          EXISTING=$(ls -d ubuntu-focal-desktop* 2>/dev/null | head -n1 || true)
+          if [ -n "$EXISTING" ]; then
+            echo "✅ Found existing rootfs in workspace: $EXISTING"
+            mkdir -p cached_rootfs
+            cp -a "$EXISTING" cached_rootfs/
+            echo "rootfs_dir=$EXISTING" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-      # 6. 编译
-      - name: Build kernel & image
+          # 否则从 Google Drive 下载并解压
+          echo "⬇️ Downloading rootfs from Google Drive (id=${ROOTFS_TGZ_ID}) ..."
+          gdown "https://drive.google.com/uc?id=${ROOTFS_TGZ_ID}&export=download" -O ${ROOTFS_TGZ_FILE}
+          if [ ! -f "${ROOTFS_TGZ_FILE}" ]; then
+            echo "❌ Download failed: ${ROOTFS_TGZ_FILE} not found"
+            exit 1
+          fi
+          tar xvzf ${ROOTFS_TGZ_FILE}
+          # 识别解压出的目录（匹配 ubuntu-focal-desktop*）
+          EXTRACTED=$(ls -d ubuntu-focal-desktop* 2>/dev/null | head -n1 || true)
+          if [ -z "$EXTRACTED" ]; then
+            echo "❌ Could not find extracted rootfs directory after tar"
+            ls -al
+            exit 1
+          fi
+          # 将解压结果同时存入 cached_rootfs，便于下次 cache 使用
+          mkdir -p cached_rootfs
+          cp -a "$EXTRACTED" cached_rootfs/
+          echo "✅ Downloaded and extracted: $EXTRACTED"
+          echo "rootfs_dir=$EXTRACTED" >> $GITHUB_OUTPUT
+
+      # ---- 确保仓库根 out 存在（build 脚本可能引用 $PWD/out） ----
+      - name: Ensure repository root out exists
         run: |
+          mkdir -p out
+          ls -ld out || true
+
+      # ---- 克隆 sd-fuse_rk3399（先清理旧目录避免残留），再创建 sd-fuse 内部 out ----
+      - name: Clone sd-fuse_rk3399 and prepare sd-fuse out
+        run: |
+          rm -rf sd-fuse_rk3399
+          git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
+          mkdir -p sd-fuse_rk3399/out
+          ls -lah sd-fuse_rk3399
+
+      # ---- 克隆 kernel 并检查 DTS ----
+      - name: Clone kernel
+        run: |
+          rm -rf kernel-rk3399
+          git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+          if [ ! -d "kernel-rk3399/arch/arm64/boot/dts/rockchip" ]; then
+            echo "❌ ERROR: Kernel DTS folder not found!"
+            ls -R kernel-rk3399 || true
+            exit 1
+          fi
+          ls -lh kernel-rk3399/arch/arm64/boot/dts/rockchip || true
+
+      # ---- 覆盖自定义 DTS（仅复制单个文件，不删除 kernel 原 dts） ----
+      - name: Copy custom DTS
+        run: |
+          if [ ! -f "${CUSTOM_DTS}" ]; then
+            echo "❌ ERROR: custom DTS '${CUSTOM_DTS}' not found in repo"
+            ls -lah dts || true
+            exit 1
+          fi
+          cp "${CUSTOM_DTS}" kernel-rk3399/arch/arm64/boot/dts/rockchip/
+          if [ ! -f kernel-rk3399/arch/arm64/boot/dts/rockchip/$(basename ${CUSTOM_DTS}) ]; then
+            echo "❌ ERROR: Custom DTS copy failed!"
+            exit 1
+          fi
+          echo "✅ Custom DTS copied: $(basename ${CUSTOM_DTS})"
+
+      # ---- Build Kernel (在 sd-fuse_rk3399 下执行) ----
+      - name: Build Kernel
+        run: |
+          set -euo pipefail
+          echo "Using CROSS_COMPILE=${CROSS_COMPILE:-<not-set>} ARCH=${ARCH:-<not-set>}"
           cd sd-fuse_rk3399
-          ./build-kernel.sh nanopi4
-          ./mkimage.sh nanopi4
+          mkdir -p out
+          echo "Running build-kernel.sh with KERNEL_SRC pointing to ../kernel-rk3399 and rootfs ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}"
+          KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
 
-      # 7. 上传 Artifact
-      - name: Upload image
+      # ---- Build Kernel headers ----
+      - name: Build Kernel headers
+        run: |
+          set -euo pipefail
+          cd sd-fuse_rk3399
+          MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
+
+      # ---- Clone and Build U-Boot ----
+      - name: Build U-Boot
+        run: |
+          set -euo pipefail
+          rm -rf uboot-rockchip
+          git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
+          cd sd-fuse_rk3399
+          UBOOT_SRC=$PWD/../uboot-rockchip ./build-uboot.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
+
+      # ---- Generate final SD image ----
+      - name: Build final SD image
+        run: |
+          set -euo pipefail
+          cd sd-fuse_rk3399
+          mkdir -p out
+          ./mk-sd-image.sh ../${{ steps.prepare-rootfs.outputs.rootfs_dir }}
+          ls -lh out || true
+
+      # ---- Upload final image artifact ----
+      - name: Upload SD image
         uses: actions/upload-artifact@v4
         with:
-          name: rk3399-image
+          name: rk3399-sd-image
           path: sd-fuse_rk3399/out/*.img

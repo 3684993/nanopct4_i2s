@@ -1,0 +1,75 @@
+name: Grok Build RK3399 Ubuntu Focal Desktop Firmware
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the sd-fuse_rk3399 repository
+    - name: Checkout sd-fuse_rk3399 repository
+      uses: actions/checkout@v4
+      with:
+        repository: friendlyarm/sd-fuse_rk3399
+        ref: kernel-4.19
+        path: sd-fuse_rk3399
+
+    # Install dependencies
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git build-essential crossbuild-essential-arm64 \
+          bc kmod libncurses-dev flex bison libssl-dev tar \
+          libelf-dev device-tree-compiler python3-pip
+        pip3 install gdown
+
+    # Download and extract ubuntu-focal-desktop-arm64 images
+    - name: Download and extract ubuntu-focal-desktop-arm64
+      working-directory: sd-fuse_rk3399
+      run: |
+        gdown https://drive.google.com/uc?id=1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5 -O ubuntu-focal-desktop-arm64-images.tgz
+        tar xvzf ubuntu-focal-desktop-arm64-images.tgz
+
+    # Install aarch64-gcc-11.3 toolchain
+    - name: Install aarch64-gcc-11.3
+      run: |
+        git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+        cd prebuilts/gcc-x64
+        sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
+
+    # Clone and compile the kernel
+    - name: Compile Kernel
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
+
+    # Clone and compile kernel headers
+    - name: Compile Kernel Headers
+      working-directory: sd-fuse_rk3399
+      run: |
+        # Reuse the kernel source from the previous step
+        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
+
+    # Clone and compile U-Boot
+    - name: Compile U-Boot
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
+        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh ubuntu-focal-desktop-arm64
+
+    # Generate SD card firmware
+    - name: Generate SD Card Firmware
+      working-directory: sd-fuse_rk3399
+      run: |
+        ./mk-sd-image.sh ubuntu-focal-desktop-arm64
+
+    # Upload the generated firmware as an artifact
+    - name: Upload Firmware Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3399-sd-firmware
+        path: sd-fuse_rk3399/out/rk3399-sd-ubuntu-focal-desktop-4.19-arm64-*.img
+        retention-days: 7

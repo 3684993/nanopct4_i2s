@@ -1,4 +1,5 @@
-name: Build Nano Inmp441 Final
+name: Nanopc-t4 Inmp441 Build
+
 on:
   workflow_dispatch:
 
@@ -30,13 +31,6 @@ jobs:
           libelf-dev device-tree-compiler python3-pip
         pip3 install gdown
 
-    # Download and extract ubuntu-focal-desktop-arm64 images
-    - name: Download and extract ubuntu-focal-desktop-arm64
-      working-directory: sd-fuse_rk3399
-      run: |
-        gdown https://drive.google.com/uc?id=1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5 -O ubuntu-focal-desktop-arm64-images.tgz
-        tar xvzf ubuntu-focal-desktop-arm64-images.tgz
-
     # Install aarch64-gcc-11.3 toolchain
     - name: Install aarch64-gcc-11.3
       run: |
@@ -44,36 +38,64 @@ jobs:
         cd prebuilts/gcc-x64
         sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
 
-    # Check for DTS file existence
-    - name: Check DTS file existence
+    # Check for custom DTS file existence
+    - name: Check custom DTS file existence
       run: |
         if [ ! -f current-repo/dts/rk3399-nanopi4-rev00.dts ]; then
-          echo "Error: DTS file 'current-repo/dts/rk3399-nanopi4-rev00.dts' not found in the current repository."
-          exit 1
-        fi
-        if [ -f sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
-          echo "Warning: DTS file 'sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts' already exists in the kernel source directory."
+          echo "Error: Custom DTS file 'current-repo/dts/rk3399-nanopi4-rev00.dts' not found in the current repository."
           exit 1
         fi
 
-    # Copy custom DTS file to kernel source
-    - name: Copy custom DTS file
-      run: |
-        mkdir -p sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip
-        cp current-repo/dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/
-
-    # Clone and compile the kernel
-    - name: Compile Kernel
+    # Clone kernel source
+    - name: Clone kernel source
       working-directory: sd-fuse_rk3399
       run: |
         git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
-        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
 
-    # Clone and compile kernel headers
-    - name: Compile Kernel Headers
+    # Copy custom DTS file to kernel source (overwrite existing)
+    - name: Copy custom DTS file
+      run: |
+        if [ ! -f current-repo/dts/rk3399-nanopi4-rev00.dts ]; then
+          echo "Error: Custom DTS file 'current-repo/dts/rk3399-nanopi4-rev00.dts' not found in the current repository."
+          exit 1
+        fi      
+        cp current-repo/dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+        echo "Custom DTS file successfully copied to kernel source."
+        
+    # Verify kernel DTS Makefile includes rk3399-nanopi4-rev00.dtb
+    - name: Verify kernel DTS Makefile
+      run: |
+        if ! grep -q "rk3399-nanopi4-rev00.dtb" sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile; then
+          echo "Error: 'rk3399-nanopi4-rev00.dtb' not found in kernel DTS Makefile."
+          echo "Adding 'rk3399-nanopi4-rev00.dtb' to Makefile..."
+          echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi4-rev00.dtb" >> sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile
+        else
+          echo "Kernel DTS Makefile already includes 'rk3399-nanopi4-rev00.dtb'."
+        fi
+        
+    # Download and extract ubuntu-focal-desktop-arm64 images
+    - name: Download and extract ubuntu-focal-desktop-arm64
       working-directory: sd-fuse_rk3399
       run: |
-        # Reuse the kernel source from the previous step
+        gdown https://drive.google.com/uc?id=1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5 -O ubuntu-focal-desktop-arm64-images.tgz
+        tar xvzf ubuntu-focal-desktop-arm64-images.tgz
+        if [ -d ubuntu-focal-desktop-arm64 ]; then
+          echo "Successfully extracted ubuntu-focal-desktop-arm64 images."
+        else
+          echo "Error: Failed to extract ubuntu-focal-desktop-arm64 images."
+          exit 1
+        fi
+
+    # Compile kernel
+    - name: Compile kernel
+      working-directory: sd-fuse_rk3399
+      run: |
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
+
+    # Compile kernel headers
+    - name: Compile kernel headers
+      working-directory: sd-fuse_rk3399
+      run: |
         MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
 
     # Clone and compile U-Boot
@@ -84,13 +106,13 @@ jobs:
         UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh ubuntu-focal-desktop-arm64
 
     # Generate SD card firmware
-    - name: Generate SD Card Firmware
+    - name: Generate SD card firmware
       working-directory: sd-fuse_rk3399
       run: |
         ./mk-sd-image.sh ubuntu-focal-desktop-arm64
 
     # Upload the generated firmware as an artifact
-    - name: Upload Firmware Artifact
+    - name: Upload firmware artifact
       uses: actions/upload-artifact@v4
       with:
         name: rk3399-sd-firmware

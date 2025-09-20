@@ -1,4 +1,4 @@
-name: Build Ubuntu Focal Image (RK3399)
+name: FBuild Ubuntu Focal Image (RK3399)
 
 on:
   workflow_dispatch:

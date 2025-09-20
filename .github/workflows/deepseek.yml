@@ -1,0 +1,82 @@
+name: Build FriendlyCore Focal Kernel and U-Boot
+
+on:
+  workflow_dispatch:  # 允许手动触发工作流
+  
+env:
+  SD_FUSE_REPO: https://github.com/friendlyarm/sd-fuse_rk3399.git
+  KERNEL_REPO: https://github.com/friendlyarm/kernel-rockchip
+  UBOOT_REPO: https://github.com/friendlyarm/uboot-rockchip
+  KERNEL_BRANCH: nanopi4-v4.19.y
+  UBOOT_BRANCH: nanopi4-v2017.09
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          build-essential \
+          libssl-dev \
+          bc \
+          kmod \
+          cpio \
+          flex \
+          libelf-dev \
+          bison \
+          rsync \
+          device-tree-compiler \
+          u-boot-tools \
+          gcc-aarch64-linux-gnu
+
+    - name: Clone sd-fuse tools
+      run: |
+        git clone $SD_FUSE_REPO -b kernel-4.19 sd-fuse_rk3399
+        cd sd-fuse_rk3399
+
+    - name: Setup environment
+      working-directory: ./sd-fuse_rk3399
+      run: |
+        # 这里假设镜像文件将通过其他方式提供
+        # 在实际使用中，您需要提供获取和解压镜像文件的逻辑
+        echo "Image preparation would happen here"
+
+    - name: Clone and build kernel
+      working-directory: ./sd-fuse_rk3399
+      run: |
+        git clone $KERNEL_REPO --depth 1 -b $KERNEL_BRANCH kernel-rk3399
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    - name: Clone and build kernel headers
+      working-directory: ./sd-fuse_rk3399
+      run: |
+        # 确保内核源码已存在，避免重复克隆
+        if [ ! -d "kernel-rk3399" ]; then
+          git clone $KERNEL_REPO --depth 1 -b $KERNEL_BRANCH kernel-rk3399
+        fi
+        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    - name: Clone and build U-Boot
+      working-directory: ./sd-fuse_rk3399
+      run: |
+        git clone $UBOOT_REPO --depth 1 -b $UBOOT_BRANCH uboot-rockchip
+        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh friendlycore-focal-arm64
+
+    - name: Generate new firmware image
+      working-directory: ./sd-fuse_rk3399
+      run: |
+        ./mk-sd-image.sh friendlycore-focal-arm64
+
+    - name: Upload generated image
+      uses: actions/upload-artifact@v3
+      with:
+        name: friendlycore-focal-image
+        path: sd-fuse_rk3399/out/*.img

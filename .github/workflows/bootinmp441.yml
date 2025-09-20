@@ -1,0 +1,110 @@
+name: Boot INMP441
+on:
+  workflow_dispatch:
+
+env:
+  ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  KERNEL_DEFCONFIG: nanopi4_linux_defconfig
+  OUTPUT_DIR: ${{ github.workspace }}/output
+  DTS_FILE: arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+  LOCALVERSION: ""
+  BOOT_IMG: ${{ github.workspace }}/output/boot.img
+  KERNEL_REPO: https://github.com/friendlyarm/kernel-rockchip
+  KERNEL_BRANCH: nanopi4-v4.19.y
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            bison flex libssl-dev \
+            libncurses5-dev \
+            device-tree-compiler \
+            curl git u-boot-tools
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 -b $KERNEL_BRANCH $KERNEL_REPO kernel
+
+      - name: Setup output directory
+        run: |
+          mkdir -p "${{ env.OUTPUT_DIR }}"
+
+      - name: Copy custom DTS (if exists)
+        run: |
+          if [ -f dts/rk3399-nanopi4-rev00.dts ]; then
+            echo "Replacing DTS with custom version..."
+            cp dts/rk3399-nanopi4-rev00.dts kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          else
+            echo "Using default DTS from kernel repo."
+          fi
+
+      - name: Clean Kernel Tree
+        run: |
+          cd kernel
+          git clean -xfd
+          git reset --hard
+
+      - name: Compile kernel
+        run: |
+          set -euo pipefail
+          cd kernel
+          echo "Kernel defconfig: $KERNEL_DEFCONFIG"
+          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE $KERNEL_DEFCONFIG
+          make -j$(nproc) O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE Image dtbs modules
+
+      - name: Install modules
+        run: |
+          set -euo pipefail
+          cd kernel
+          make O="${{ env.OUTPUT_DIR }}" ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_install INSTALL_MOD_PATH="${{ env.OUTPUT_DIR }}/rootfs"
+
+      - name: Inspect build outputs (debug)
+        run: |
+          echo "Listing output directory:"
+          ls -la "${{ env.OUTPUT_DIR }}"
+          echo "Listing kernel artifacts:"
+          ls -la "${{ env.OUTPUT_DIR }}/arch/arm64/boot" || true
+          echo "Listing dtbs rockchip folder:"
+          ls -la "${{ env.OUTPUT_DIR }}/arch/arm64/boot/dts/rockchip" || true
+
+      - name: Create boot partition image (raw, compatible with rkdeveloptool)
+        env:
+          WORK_DIR: ${{ env.OUTPUT_DIR }}
+          BOOT_IMG: ${{ env.BOOT_IMG }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${WORK_DIR}/boot"
+
+          # 复制 kernel 和 dtb
+          cp "${WORK_DIR}/arch/arm64/boot/Image" "${WORK_DIR}/boot/"
+          cp "${WORK_DIR}/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dtb" "${WORK_DIR}/boot/" || true
+
+          # 如果有 initramfs，合并到 boot.img
+          if [ -f "${WORK_DIR}/rootfs/initramfs.cpio.gz" ]; then
+            cat "${WORK_DIR}/boot/Image" \
+                "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" \
+                "${WORK_DIR}/rootfs/initramfs.cpio.gz" > "${BOOT_IMG}"
+          else
+            cat "${WORK_DIR}/boot/Image" "${WORK_DIR}/boot/rk3399-nanopi4-rev00.dtb" > "${BOOT_IMG}"
+          fi
+
+          echo "boot.img (raw) created successfully: ${BOOT_IMG}"
+          ls -lh "${BOOT_IMG}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image
+          path: ${{ env.BOOT_IMG }}

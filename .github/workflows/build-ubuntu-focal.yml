@@ -5,56 +5,53 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       # 1. Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安装依赖
+      # 2. 安装依赖 + aarch64 gcc
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git wget curl unzip bc python3 build-essential device-tree-compiler bison flex libssl-dev
+          sudo apt-get install -y \
+            git wget curl unzip bc python3 \
+            build-essential device-tree-compiler bison flex libssl-dev \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      # 3. 下载并解压 FriendlyARM 工具链
-      - name: Setup Toolchain
-        run: |
-          git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
-          cd prebuilts/gcc-x64
-          sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
-          echo "/opt/FriendlyARM/toolchain/11.3-aarch64/bin" >> $GITHUB_PATH
           echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "ARCH=arm64" >> $GITHUB_ENV
           aarch64-linux-gnu-gcc --version
 
-      # 4. 确保 out 目录存在
+      # 3. 确保 out 目录存在
       - name: Prepare out directories
         run: |
           mkdir -p out
           mkdir -p sd-fuse_rk3399/out
 
-      # 5. Clone sd-fuse
+      # 4. Clone sd-fuse
       - name: Clone sd-fuse
         run: |
           if [ ! -d sd-fuse_rk3399 ]; then
             git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
           fi
 
-      # 6. 复制自定义 DTS
+      # 5. 复制自定义 DTS
       - name: Override DTS
         run: |
-          cp dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          cp dts/rk3399-nanopi4-rev00.dts \
+            sd-fuse_rk3399/kernel/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
 
-      # 7. 编译
+      # 6. 编译
       - name: Build kernel & image
         run: |
           cd sd-fuse_rk3399
           ./build-kernel.sh nanopi4
           ./mkimage.sh nanopi4
 
-      # 8. 上传 Artifact
+      # 7. 上传 Artifact
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:

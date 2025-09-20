@@ -1,4 +1,4 @@
-name: Build Ubuntu Focal Image (RK3399)
+name: Build Ubuntu Focal Image (RK3399 Full)
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
 env:
   ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
   ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
+  ROOTFS_DIR_NAME: ubuntu-focal-desktop-arm64
   CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
 
 jobs:
@@ -13,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repository (含 DTS 和 build 脚本)
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -28,37 +29,40 @@ jobs:
             gawk wget tar xz-utils cpio unzip rsync file aria2
           pip install gdown
 
-      # 3. 下载 rootfs
-      - name: Download rootfs from Google Drive
+      # 3. 缓存 rootfs
+      - name: Restore rootfs cache
+        id: cache-rootfs
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/$ROOTFS_DIR_NAME
+          key: rootfs-${{ env.ROOTFS_TGZ_ID }}-${{ runner.os }}
+      
+      # 4. 下载 rootfs（仅当缓存未命中）
+      - name: Download rootfs if missing
+        if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
-          echo "⬇️ Downloading ubuntu-focal-desktop rootfs..."
+          echo "⬇️ Rootfs cache miss, downloading from Google Drive..."
           gdown "https://drive.google.com/uc?id=${ROOTFS_TGZ_ID}&export=download" -O ${ROOTFS_TGZ_FILE}
-          ls -lh ${ROOTFS_TGZ_FILE}
-
-      # 4. 解压 rootfs
-      - name: Extract rootfs
-        run: |
           tar xvzf ${ROOTFS_TGZ_FILE}
-          echo "解压目录:"
           ls -lh
 
-      # 5. 自动检测 rootfs 目录
+      # 5. 确认 rootfs 目录
       - name: Detect rootfs directory
         id: detect-rootfs
         run: |
           ROOTFS_DIR=$(ls -d */ | grep "ubuntu-focal-desktop" | head -n1 | sed 's#/##')
           if [ -z "$ROOTFS_DIR" ]; then
-            echo "❌ ERROR: 未找到 ubuntu-focal-desktop rootfs 目录"
+            echo "❌ ERROR: Rootfs directory not found!"
             exit 1
           fi
-          echo "✅ Found rootfs directory: $ROOTFS_DIR"
+          echo "✅ Using rootfs directory: $ROOTFS_DIR"
           echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
 
-      # 6. Clone sd-fuse_rk3399 build scripts
+      # 6. Clone sd-fuse_rk3399
       - name: Clone sd-fuse_rk3399
         run: |
+          rm -rf sd-fuse_rk3399
           git clone https://github.com/friendlyarm/sd-fuse_rk3399.git -b kernel-4.19
-          # ✅ 确保 out 目录存在
           mkdir -p sd-fuse_rk3399/out
           ls -lh sd-fuse_rk3399
 
@@ -66,49 +70,44 @@ jobs:
       - name: Clone kernel
         run: |
           git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
-          # 检查官方 DTS 是否存在
           if [ ! -d "kernel-rk3399/arch/arm64/boot/dts/rockchip" ]; then
             echo "❌ ERROR: Kernel DTS folder not found!"
             exit 1
           fi
-          ls kernel-rk3399/arch/arm64/boot/dts/rockchip
 
       # 8. 覆盖自定义 DTS
       - name: Copy custom DTS
         run: |
           cp $GITHUB_WORKSPACE/${CUSTOM_DTS} kernel-rk3399/arch/arm64/boot/dts/rockchip/
-          if [ ! -f kernel-rk3399/arch/arm64/boot/dts/rockchip/$(basename ${CUSTOM_DTS}) ]; then
-            echo "❌ ERROR: Custom DTS copy failed!"
-            exit 1
-          fi
           echo "✅ Custom DTS copied"
 
       # 9. Build Kernel
       - name: Build Kernel
         run: |
-          # ✅ 确保 out 目录存在
-          mkdir -p sd-fuse_rk3399/out
-          KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
+          cd sd-fuse_rk3399
+          mkdir -p out
+          KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
 
       # 10. Build Kernel headers
       - name: Build Kernel headers
         run: |
+          cd sd-fuse_rk3399
           MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
-          KERNEL_SRC=$PWD/kernel-rk3399 ./sd-fuse_rk3399/build-kernel.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
+          KERNEL_SRC=$PWD/../kernel-rk3399 ./build-kernel.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
 
       # 11. Clone and Build U-Boot
       - name: Build U-Boot
         run: |
           git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
-          UBOOT_SRC=$PWD/uboot-rockchip ./sd-fuse_rk3399/build-uboot.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
+          cd sd-fuse_rk3399
+          UBOOT_SRC=$PWD/../uboot-rockchip ./build-uboot.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
 
       # 12. Build final SD card image
       - name: Build final SD image
         run: |
-          # ✅ 确保 out 目录存在
-          mkdir -p sd-fuse_rk3399/out
           cd sd-fuse_rk3399
-          ./mk-sd-image.sh ${{ steps.detect-rootfs.outputs.rootfs_dir }}
+          mkdir -p out
+          ./mk-sd-image.sh ../${{ steps.detect-rootfs.outputs.rootfs_dir }}
           ls -lh out/
 
       # 13. Upload SD image artifact

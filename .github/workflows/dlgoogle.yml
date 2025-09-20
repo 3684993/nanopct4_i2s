@@ -1,0 +1,38 @@
+name: Download RootFS and Upload Artifact
+
+on:
+  workflow_dispatch:
+
+env:
+  ROOTFS_GDRIVE_URL: https://drive.google.com/uc?id=1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
+  ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 安装依赖 gdown
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip wget
+          pip install gdown
+
+      # 3. 下载 rootfs
+      - name: Download rootfs from Google Drive
+        run: |
+          echo "⬇️ Downloading rootfs from Google Drive..."
+          gdown ${ROOTFS_GDRIVE_URL} -O ${ROOTFS_TGZ_FILE}
+          ls -lh ${ROOTFS_TGZ_FILE}
+
+      # 4. 上传 rootfs 到 GitHub Artifact
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-rootfs
+          path: ${ROOTFS_TGZ_FILE}

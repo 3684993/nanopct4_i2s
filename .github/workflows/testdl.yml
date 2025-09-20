@@ -1,0 +1,24 @@
+name: Test Google Drive Download
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install gdown
+        run: pip install gdown
+
+      - name: Try Google Drive download
+        run: |
+          FILE_ID="1PY99lQ_XWzMzBT560scon8_tnELzF9Lq"
+          OUTPUT_FILE="ubuntu-focal-desktop-arm64-images.tgz"
+          echo "⬇️ Start downloading from Google Drive..."
+          gdown "https://drive.google.com/uc?id=${FILE_ID}&export=download" -O ${OUTPUT_FILE} || exit 1
+
+          echo "📦 Checking file..."
+          ls -lh ${OUTPUT_FILE} || exit 1

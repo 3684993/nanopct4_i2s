@@ -1,0 +1,33 @@
+name: Check FriendlyCore Focal Support
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-support:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the sd-fuse_rk3399 repository
+    - name: Checkout sd-fuse_rk3399 repository
+      uses: actions/checkout@v4
+      with:
+        repository: friendlyarm/sd-fuse_rk3399
+        ref: master
+        path: sd-fuse_rk3399
+
+    # Check if build.sh exists and list supported images
+    - name: Check build.sh and list supported images
+      working-directory: sd-fuse_rk3399
+      run: |
+        if [ ! -f build.sh ]; then
+          echo "Error: build.sh not found in sd-fuse_rk3399."
+          exit 1
+        fi
+        echo "Supported image names in build.sh:"
+        grep -oE 'friendlycore-focal-arm64|ubuntu-focal-desktop-arm64|buildroot|debian-buster-desktop-arm64|friendlywrt.*|lubuntu.*|android.*' build.sh | sort -u
+        if ! grep -q "friendlycore-focal-arm64" build.sh; then
+          echo "Error: build.sh does not support friendlycore-focal-arm64."
+          exit 1
+        fi
+        echo "build.sh supports friendlycore-focal-arm64."

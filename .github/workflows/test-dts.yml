@@ -18,72 +18,13 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y device-tree-compiler
+        sudo apt-get install -y device-tree-compiler git
 
-    # Create minimal rk3399-nanopi4-common.dtsi
-    - name: Create minimal rk3399-nanopi4-common.dtsi
+    # Clone kernel-rockchip to get rk3399.dtsi and rk3399-nanopi4-common.dtsi
+    - name: Clone kernel-rockchip repository
       run: |
-        mkdir -p current-repo/dts
-        cat << 'EOF' > current-repo/dts/rk3399-nanopi4-common.dtsi
-        /dts-v1/;
-
-        / {
-            compatible = "rockchip,rk3399";
-
-            cru: clock-controller {
-                compatible = "rockchip,rk3399-cru";
-                reg = <0x0 0xff760000 0x0 0x1000>;
-                #clock-cells = <1>;
-            };
-
-            dmac_bus: dma-controller {
-                compatible = "arm,pl330", "arm,primecell";
-                reg = <0x0 0xff6e0000 0x0 0x4000>;
-                interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH 0>,
-                             <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH 0>;
-                #dma-cells = <1>;
-            };
-
-            gpio2: gpio2 {
-                compatible = "rockchip,gpio-bank";
-                reg = <0x0 0xff720000 0x0 0x100>;
-                #gpio-cells = <2>;
-            };
-
-            pinctrl: pinctrl {
-                compatible = "rockchip,rk3399-pinctrl";
-                reg = <0x0 0xff770000 0x0 0x1000>;
-                #pinctrl-cells = <2>;
-                pcie_gpios: pcie-gpios {
-                    rockchip,pins = <2 4 RK_FUNC_GPIO &pcfg_pull_none>;
-                };
-                i2s0_2ch_bus: i2s0-2ch-bus {
-                    rockchip,pins = <4 0 RK_FUNC_1 &pcfg_pull_none>;
-                };
-            };
-
-            vdd_center: vdd-center {
-                compatible = "pwm-regulator";
-                regulator-name = "vdd_center";
-                regulator-min-microvolt = <800000>;
-                regulator-max-microvolt = <1400000>;
-                status = "okay";
-            };
-
-            i2s1: i2s1@ff110000 {
-                compatible = "rockchip,rk3399-i2s", "rockchip,rk3066-i2s";
-                reg = <0x0 0xff110000 0x0 0x1000>;
-                interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH 0>;
-                clocks = <&cru SCLK_I2S1>, <&cru HCLK_I2S1>;
-                clock-names = "i2s_clk", "i2s_hclk";
-                dmas = <&dmac_bus 2>, <&dmac_bus 3>;
-                dma-names = "tx", "rx";
-                assigned-clocks = <&cru SCLK_I2SOUT_SRC>;
-                assigned-clock-parents = <&cru SCLK_I2S1_8CH>;
-                status = "disabled";
-            };
-        };
-        EOF
+        git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+        ls -l kernel-rk3399/arch/arm64/boot/dts/rockchip/
 
     # Check for custom DTS file existence
     - name: Check custom DTS file existence
@@ -93,21 +34,46 @@ jobs:
           exit 1
         fi
 
-    # Compile DTS
-    - name: Compile DTS
+    # Copy dependencies to current-repo/dts
+    - name: Copy kernel-rockchip DTS dependencies
       run: |
-        dtc -I dts -O dtb -o current-repo/dts/rk3399-nanopi4-rev00.dtb current-repo/dts/rk3399-nanopi4-rev00.dts
-        if [ $? -eq 0 ]; then
-          echo "DTS compilation successful: rk3399-nanopi4-rev00.dtb generated."
+        cp -r kernel-rk3399/arch/arm64/boot/dts/rockchip/* current-repo/dts/
+        cp -r kernel-rk3399/include/dt-bindings current-repo/dts/dt-bindings
+
+    # Compile official DTS (if exists)
+    - name: Compile official rk3399-nanopi4-rev00.dts
+      run: |
+        if [ -f kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
+          dtc -I dts -O dtb -o current-repo/dts/rk3399-nanopi4-rev00-official.dtb \
+            kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+          if [ $? -eq 0 ]; then
+            echo "Official DTS compilation successful: rk3399-nanopi4-rev00-official.dtb generated."
+          else
+            echo "Official DTS compilation failed."
+            exit 1
+          fi
         else
-          echo "DTS compilation failed."
+          echo "Official rk3399-nanopi4-rev00.dts not found in kernel-rockchip."
+        fi
+
+    # Compile custom DTS
+    - name: Compile custom rk3399-nanopi4-rev00.dts
+      run: |
+        dtc -I dts -O dtb -o current-repo/dts/rk3399-nanopi4-rev00.dtb \
+          current-repo/dts/rk3399-nanopi4-rev00.dts
+        if [ $? -eq 0 ]; then
+          echo "Custom DTS compilation successful: rk3399-nanopi4-rev00.dtb generated."
+        else
+          echo "Custom DTS compilation failed."
           exit 1
         fi
 
-    # Upload compiled DTB as artifact
-    - name: Upload DTB artifact
+    # Upload compiled DTBs as artifacts
+    - name: Upload DTB artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: rk3399-nanopi4-rev00-dtb
-        path: current-repo/dts/rk3399-nanopi4-rev00.dtb
+        name: rk3399-nanopi4-dtbs
+        path: |
+          current-repo/dts/rk3399-nanopi4-rev00.dtb
+          current-repo/dts/rk3399-nanopi4-rev00-official.dtb
         retention-days: 7

@@ -92,19 +92,42 @@
 
 &i2s1 {
     status = "okay";
+    rockchip,playback-channels = <2>;
+    rockchip,capture-channels = <2>;
     pinctrl-names = "default";
     pinctrl-0 = <&i2s1_2ch_bus>;
 };
 
-/* 在 pinctrl 节点下定义 I2S1 的 pinmux */
 &pinctrl {
     i2s1 {
         i2s1_2ch_bus: i2s1-2ch-bus {
             rockchip,pins =
-                <6 0 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SCLK */
-                <6 1 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_LRCK */
-                <6 2 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SDI0 */
-                <6 3 RK_FUNC_1 &pcfg_pull_none>; /* I2S1_SDO0 */
+                <4 3 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SCLK */
+                <4 4 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_LRCK_RX */
+                <4 5 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_LRCK_TX */
+                <4 6 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SDI0 */
+                <4 7 RK_FUNC_1 &pcfg_pull_none>; /* I2S1_SDO0 */
         };
     };
+};
+
+&sound {
+    compatible = "simple-audio-card";
+    simple-audio-card,name = "INMP441-Mic";
+    simple-audio-card,format = "i2s";
+    simple-audio-card,mclk-fs = <256>;
+    status = "okay";
+
+    simple-audio-card,cpu {
+        sound-dai = <&i2s1>;
+    };
+
+    simple-audio-card,codec {
+        sound-dai = <&inmp441>;
+    };
+};
+
+inmp441: inmp441-codec {
+    compatible = "invensense,inmp441", "dummy-codec";
+    status = "okay";
 };

@@ -126,11 +126,12 @@ jobs:
       run: |
         sed -i 's/mmcblk1/mmcblk2/g' mk-sd-image.sh
         ./mk-sd-image.sh ubuntu-focal-desktop-arm64
+        ls -la out/
 
     # Upload the generated firmware as an artifact
     - name: Upload firmware artifact
       uses: actions/upload-artifact@v4
       with:
         name: rk3399-sd-ubuntu-focal-desktop
-        path: sd-fuse_rk3399/out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img
+        path: sd-fuse_rk3399/out/*.img
         retention-days: 7

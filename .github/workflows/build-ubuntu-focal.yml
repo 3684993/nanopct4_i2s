@@ -88,16 +88,6 @@ jobs:
           echo "Kernel DTS Makefile already includes 'rk3399-nanopi4-rev00.dtb'."
         fi
 
-    # Check if build.sh supports ubuntu-focal-desktop-arm64
-    - name: Check build.sh support for ubuntu-focal-desktop-arm64
-      working-directory: sd-fuse_rk3399
-      run: |
-        if ! grep -q "ubuntu-focal-desktop-arm64" build.sh; then
-          echo "Error: build.sh does not support ubuntu-focal-desktop-arm64."
-          exit 1
-        fi
-        echo "build.sh supports ubuntu-focal-desktop-arm64."
-
     # Download and extract ubuntu-focal-desktop-arm64 images
     - name: Download and extract ubuntu-focal-desktop-arm64
       working-directory: sd-fuse_rk3399

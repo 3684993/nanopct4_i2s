@@ -1,0 +1,98 @@
+name: Build RK3399 FriendlyCore Focal Firmware
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      TOOLCHAIN_PATH: /opt/FriendlyARM/toolchain/11.3-aarch64
+      ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
+      ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
+      CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
+
+    steps:
+    # 1. Checkout sd-fuse_rk3399
+    - name: Checkout sd-fuse_rk3399
+      uses: actions/checkout@v4
+      with:
+        repository: friendlyarm/sd-fuse_rk3399
+        ref: kernel-4.19
+        path: sd-fuse_rk3399
+
+    # 2. Install dependencies
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git wget build-essential bc kmod \
+          libncurses-dev flex bison libssl-dev libelf-dev \
+          device-tree-compiler unzip tar
+
+    # 3. Install FriendlyARM aarch64-gcc-11.3 toolchain
+    - name: Install aarch64-gcc-11.3
+      run: |
+        git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+        cd prebuilts/gcc-x64
+        sudo mkdir -p /opt/FriendlyARM
+        sudo tar xf toolchain-11.3-aarch64.tar.xz -C /opt/FriendlyARM
+        echo "✅ Toolchain extracted to $TOOLCHAIN_PATH"
+
+    # 4. Setup environment
+    - name: Setup Environment
+      run: |
+        echo "$TOOLCHAIN_PATH/bin" >> $GITHUB_PATH
+        echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        aarch64-linux-gnu-gcc --version
+
+    # 5. Download rootfs from Google Drive
+    - name: Download Rootfs
+      working-directory: sd-fuse_rk3399
+      run: |
+        curl -L -o $ROOTFS_TGZ_FILE "https://drive.google.com/uc?export=download&id=$ROOTFS_TGZ_ID"
+        ls -lh $ROOTFS_TGZ_FILE
+
+    # 6. Prepare kernel source and patch DTS
+    - name: Prepare Kernel Source
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+        if [ -f "../$CUSTOM_DTS" ]; then
+          cp -v "../$CUSTOM_DTS" kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+        fi
+
+    # 7. Compile Kernel
+    - name: Compile Kernel
+      working-directory: sd-fuse_rk3399
+      run: |
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    # 8. Compile Kernel Headers
+    - name: Compile Kernel Headers
+      working-directory: sd-fuse_rk3399
+      run: |
+        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    # 9. Compile U-Boot
+    - name: Compile U-Boot
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
+        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh friendlycore-focal-arm64
+
+    # 10. Generate SD card firmware
+    - name: Generate SD Card Firmware
+      working-directory: sd-fuse_rk3399
+      run: |
+        ./mk-sd-image.sh friendlycore-focal-arm64
+
+    # 11. Upload artifact
+    - name: Upload Firmware Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3399-sd-firmware
+        path: sd-fuse_rk3399/out/rk3399-sd-friendlycore-focal-4.19-arm64-*.img
+        retention-days: 7

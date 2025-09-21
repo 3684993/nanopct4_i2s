@@ -1,4 +1,4 @@
-name: Check FriendlyCore Focal Support
+name: Check Ubuntu Focal Desktop Support
 
 on:
   workflow_dispatch:
@@ -16,18 +16,42 @@ jobs:
         ref: master
         path: sd-fuse_rk3399
 
+    # Verify repository checkout and list contents
+    - name: Verify sd-fuse_rk3399 checkout
+      working-directory: sd-fuse_rk3399
+      run: |
+        if [ ! -d .git ]; then
+          echo "Error: Failed to checkout sd-fuse_rk3399 repository."
+          exit 1
+        fi
+        echo "sd-fuse_rk3399 repository contents:"
+        ls -la
+
     # Check if build.sh exists and list supported images
     - name: Check build.sh and list supported images
       working-directory: sd-fuse_rk3399
       run: |
         if [ ! -f build.sh ]; then
           echo "Error: build.sh not found in sd-fuse_rk3399."
+          echo "Possible causes:"
+          echo "- Incorrect branch (tried 'master'). Available branches:"
+          git ls-remote --heads https://github.com/friendlyarm/sd-fuse_rk3399 | grep -o 'refs/heads/.*' | sed 's|refs/heads/||'
+          echo "Suggestion: Try 'kernel-4.19' or contact FriendlyElec for updated repository."
           exit 1
         fi
+        echo "build.sh found. Extracting supported image names..."
         echo "Supported image names in build.sh:"
-        grep -oE 'friendlycore-focal-arm64|ubuntu-focal-desktop-arm64|buildroot|debian-buster-desktop-arm64|friendlywrt.*|lubuntu.*|android.*' build.sh | sort -u
-        if ! grep -q "friendlycore-focal-arm64" build.sh; then
-          echo "Error: build.sh does not support friendlycore-focal-arm64."
+        grep -oE '[a-zA-Z0-9_-]+(-arm64|-desktop-arm64)?' build.sh | grep -E 'arm64|buildroot|friendlywrt|lubuntu|android' | sort -u
+        if ! grep -q "ubuntu-focal-desktop-arm64" build.sh; then
+          echo "Error: build.sh does not support ubuntu-focal-desktop-arm64."
           exit 1
         fi
-        echo "build.sh supports friendlycore-focal-arm64."
+        echo "build.sh supports ubuntu-focal-desktop-arm64."
+
+    # Upload build.sh for debugging
+    - name: Upload build.sh artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-sh-ubuntu-focal-desktop
+        path: sd-fuse_rk3399/build.sh
+        retention-days: 7

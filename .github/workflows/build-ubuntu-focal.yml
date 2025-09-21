@@ -7,92 +7,151 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      TOOLCHAIN_PATH: /opt/FriendlyARM/toolchain/11.3-aarch64
-      ROOTFS_TGZ_ID: 1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5
-      ROOTFS_TGZ_FILE: ubuntu-focal-desktop-arm64-images.tgz
-      CUSTOM_DTS: dts/rk3399-nanopi4-rev00.dts
-
     steps:
-    # 1. Checkout sd-fuse_rk3399
-    - name: Checkout sd-fuse_rk3399
+    # Checkout the current repository (containing the modified DTS file)
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+      with:
+        path: current-repo
+
+    # Checkout the sd-fuse_rk3399 repository
+    - name: Checkout sd-fuse_rk3399 repository
       uses: actions/checkout@v4
       with:
         repository: friendlyarm/sd-fuse_rk3399
         ref: kernel-4.19
         path: sd-fuse_rk3399
 
-    # 2. Install dependencies
+    # Install dependencies
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git wget build-essential bc kmod \
-          libncurses-dev flex bison libssl-dev libelf-dev \
-          device-tree-compiler unzip tar
+        sudo apt-get install -y git build-essential crossbuild-essential-arm64 \
+          bc kmod libncurses-dev flex bison libssl-dev tar \
+          libelf-dev device-tree-compiler python3-pip fdisk
+        pip3 install gdown
 
-    # 3. Install FriendlyARM aarch64-gcc-11.3 toolchain
+    # Install aarch64-gcc-11.3 toolchain
     - name: Install aarch64-gcc-11.3
       run: |
         git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
         cd prebuilts/gcc-x64
-        sudo mkdir -p /opt/FriendlyARM
-        sudo tar xf toolchain-11.3-aarch64.tar.xz -C /opt/FriendlyARM
-        echo "✅ Toolchain extracted to $TOOLCHAIN_PATH"
+        sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
 
-    # 4. Setup environment
-    - name: Setup Environment
+    # Check for custom DTS file existence
+    - name: Check custom DTS file existence
       run: |
-        echo "$TOOLCHAIN_PATH/bin" >> $GITHUB_PATH
-        echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-        aarch64-linux-gnu-gcc --version
+        if [ ! -f current-repo/dts/rk3399-nanopi4-rev00.dts ]; then
+          echo "Error: Custom DTS file 'current-repo/dts/rk3399-nanopi4-rev00.dts' not found."
+          exit 1
+        fi
 
-    # 5. Download rootfs from Google Drive
-    - name: Download Rootfs
-      working-directory: sd-fuse_rk3399
+    # Clean kernel-rk3399 directory if it exists
+    - name: Clean kernel-rk3399 directory
       run: |
-        curl -L -o $ROOTFS_TGZ_FILE "https://drive.google.com/uc?export=download&id=$ROOTFS_TGZ_ID"
-        ls -lh $ROOTFS_TGZ_FILE
+        if [ -d sd-fuse_rk3399/kernel-rk3399 ]; then
+          echo "Cleaning existing kernel-rk3399 directory..."
+          rm -rf sd-fuse_rk3399/kernel-rk3399
+        fi
 
-    # 6. Prepare kernel source and patch DTS
-    - name: Prepare Kernel Source
+    # Clone kernel source
+    - name: Clone kernel source
       working-directory: sd-fuse_rk3399
       run: |
         git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
-        if [ -f "../$CUSTOM_DTS" ]; then
-          cp -v "../$CUSTOM_DTS" kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+
+    # Copy custom DTS file to kernel source (overwrite existing)
+    - name: Copy custom DTS file
+      run: |
+        cp current-repo/dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+        if [ -f sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
+          echo "Custom DTS file successfully copied to kernel source."
+        else
+          echo "Error: Failed to copy DTS file to kernel source."
+          exit 1
+        fi
+        
+    - name: Update kernel config for I2S and audio
+      working-directory: sd-fuse_rk3399/kernel-rk3399
+      run: |
+        echo -e "CONFIG_SND_SOC_ROCKCHIP_I2S=y\nCONFIG_SND_SOC_SIMPLE_CARD=y\nCONFIG_SND_SOC=y\nCONFIG_SND=y" >> .config
+        make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
+    # Verify kernel DTS Makefile includes rk3399-nanopi4-rev00.dtb
+    - name: Verify kernel DTS Makefile
+      run: |
+        if ! grep -q "rk3399-nanopi4-rev00.dtb" sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile; then
+          echo "Error: 'rk3399-nanopi4-rev00.dtb' not found in kernel DTS Makefile."
+          echo "Adding 'rk3399-nanopi4-rev00.dtb' to Makefile..."
+          echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi4-rev00.dtb" >> sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile
+        else
+          echo "Kernel DTS Makefile already includes 'rk3399-nanopi4-rev00.dtb'."
         fi
 
-    # 7. Compile Kernel
-    - name: Compile Kernel
+    # Check if build.sh supports ubuntu-focal-desktop-arm64
+    - name: Check build.sh support for ubuntu-focal-desktop-arm64
       working-directory: sd-fuse_rk3399
       run: |
-        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+        if ! grep -q "ubuntu-focal-desktop-arm64" build.sh; then
+          echo "Error: build.sh does not support ubuntu-focal-desktop-arm64."
+          exit 1
+        fi
+        echo "build.sh supports ubuntu-focal-desktop-arm64."
 
-    # 8. Compile Kernel Headers
-    - name: Compile Kernel Headers
+    # Download and extract ubuntu-focal-desktop-arm64 images
+    - name: Download and extract ubuntu-focal-desktop-arm64
       working-directory: sd-fuse_rk3399
       run: |
-        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 \
-        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+        gdown https://drive.google.com/uc?id=1LgmYqwXrX6O8YGxgIN9mS9upcOMnpIT5 -O ubuntu-focal-desktop-arm64-images.tgz
+        tar xvzf ubuntu-focal-desktop-arm64-images.tgz
+        if [ -d ubuntu-focal-desktop-arm64 ]; then
+          echo "Successfully extracted ubuntu-focal-desktop-arm64 images."
+        else
+          echo "Error: Failed to extract ubuntu-focal-desktop-arm64 images."
+          exit 1
+        fi
 
-    # 9. Compile U-Boot
+    # Compile kernel
+    - name: Compile kernel
+      working-directory: sd-fuse_rk3399
+      run: |
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
+
+    # Compile kernel headers
+    - name: Compile kernel headers
+      working-directory: sd-fuse_rk3399
+      run: |
+        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh ubuntu-focal-desktop-arm64
+
+    # Clone and compile U-Boot
     - name: Compile U-Boot
       working-directory: sd-fuse_rk3399
       run: |
         git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
-        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh friendlycore-focal-arm64
+        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh ubuntu-focal-desktop-arm64
 
-    # 10. Generate SD card firmware
-    - name: Generate SD Card Firmware
+    # Generate SD card firmware
+    - name: Generate SD card firmware
       working-directory: sd-fuse_rk3399
       run: |
-        ./mk-sd-image.sh friendlycore-focal-arm64
+        sed -i 's/mmcblk1/mmcblk2/g' mk-sd-image.sh
+        ./mk-sd-image.sh ubuntu-focal-desktop-arm64
 
-    # 11. Upload artifact
-    - name: Upload Firmware Artifact
+    # Verify partition table
+    - name: Verify partition table
+      working-directory: sd-fuse_rk3399
+      run: |
+        fdisk -l out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img
+        if fdisk -l out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img | grep -q "mmcblk2p.*ext4"; then
+          echo "Partition with ext4 found in the image."
+        else
+          echo "Error: No ext4 partition found in the image."
+        fi
+
+    # Upload the generated firmware as an artifact
+    - name: Upload firmware artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rk3399-sd-firmware
-        path: sd-fuse_rk3399/out/rk3399-sd-friendlycore-focal-4.19-arm64-*.img
+        name: rk3399-sd-ubuntu-focal-desktop
+        path: sd-fuse_rk3399/out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img
         retention-days: 7

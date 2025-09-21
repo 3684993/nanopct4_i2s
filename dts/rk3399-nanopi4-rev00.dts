@@ -11,28 +11,25 @@
     model = "FriendlyElec NanoPC-T4";
     compatible = "friendlyelec,nanopc-t4", "rockchip,rk3399";
 
-    /* INMP441 编解码器节点 */
-    inmp441_codec: inmp441 {
-        compatible = "invensense,inmp441", "dummy-codec"; /* 优先使用 INMP441 驱动，fallback 到 dummy-codec */
-        #sound-dai-cells = <0>;
-        status = "okay";
-    };
-
-    /* 音频卡节点 */
-    sound_inmp441: sound-inmp441 {
+    sound {
         compatible = "simple-audio-card";
         simple-audio-card,name = "INMP441-Mic";
         simple-audio-card,format = "i2s";
-        simple-audio-card,bitclock-master = <&dailink0_master>;
-        simple-audio-card,frame-master = <&dailink0_master>;
+        simple-audio-card,mclk-fs = <256>;
+        status = "okay";
 
-        dailink0_master: simple-audio-card,cpu {
+        simple-audio-card,cpu {
             sound-dai = <&i2s1>;
         };
 
         simple-audio-card,codec {
-            sound-dai = <&inmp441_codec>;
+            sound-dai = <&inmp441>;
         };
+    };
+
+    inmp441: inmp441-codec {
+        compatible = "invensense,inmp441", "simple-audio-card,dummy-codec";
+        status = "okay";
     };
 };
 
@@ -51,7 +48,7 @@
     upthreshold = <40>;
     downdifferential = <20>;
     system-status-freq = <
-        /* system status         freq(KHz) */
+        /*system status         freq(KHz)*/
         SYS_STATUS_NORMAL       800000
         SYS_STATUS_REBOOT       528000
         SYS_STATUS_SUSPEND      200000
@@ -109,25 +106,4 @@
                 <4 7 RK_FUNC_1 &pcfg_pull_none>; /* I2S1_SDO0 */
         };
     };
-};
-
-&sound {
-    compatible = "simple-audio-card";
-    simple-audio-card,name = "INMP441-Mic";
-    simple-audio-card,format = "i2s";
-    simple-audio-card,mclk-fs = <256>;
-    status = "okay";
-
-    simple-audio-card,cpu {
-        sound-dai = <&i2s1>;
-    };
-
-    simple-audio-card,codec {
-        sound-dai = <&inmp441>;
-    };
-};
-
-inmp441: inmp441-codec {
-    compatible = "invensense,inmp441", "dummy-codec";
-    status = "okay";
 };

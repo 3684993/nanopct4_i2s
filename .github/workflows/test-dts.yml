@@ -18,13 +18,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y device-tree-compiler git
-
-    # Clone kernel-rockchip to get rk3399.dtsi and rk3399-nanopi4-common.dtsi
-    - name: Clone kernel-rockchip repository
-      run: |
-        git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
-        ls -l kernel-rk3399/arch/arm64/boot/dts/rockchip/
+        sudo apt-get install -y device-tree-compiler
 
     # Check for custom DTS file existence
     - name: Check custom DTS file existence
@@ -34,46 +28,22 @@ jobs:
           exit 1
         fi
 
-    # Copy dependencies to current-repo/dts
-    - name: Copy kernel-rockchip DTS dependencies
-      run: |
-        cp -r kernel-rk3399/arch/arm64/boot/dts/rockchip/* current-repo/dts/
-        cp -r kernel-rk3399/include/dt-bindings current-repo/dts/dt-bindings
-
-    # Compile official DTS (if exists)
-    - name: Compile official rk3399-nanopi4-rev00.dts
-      run: |
-        if [ -f kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
-          dtc -I dts -O dtb -o current-repo/dts/rk3399-nanopi4-rev00-official.dtb \
-            kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
-          if [ $? -eq 0 ]; then
-            echo "Official DTS compilation successful: rk3399-nanopi4-rev00-official.dtb generated."
-          else
-            echo "Official DTS compilation failed."
-            exit 1
-          fi
-        else
-          echo "Official rk3399-nanopi4-rev00.dts not found in kernel-rockchip."
-        fi
-
     # Compile custom DTS
     - name: Compile custom rk3399-nanopi4-rev00.dts
       run: |
         dtc -I dts -O dtb -o current-repo/dts/rk3399-nanopi4-rev00.dtb \
           current-repo/dts/rk3399-nanopi4-rev00.dts
         if [ $? -eq 0 ]; then
-          echo "Custom DTS compilation successful: rk3399-nanopi4-rev00.dtb generated."
+          echo "DTS compilation successful: rk3399-nanopi4-rev00.dtb generated."
         else
-          echo "Custom DTS compilation failed."
+          echo "DTS compilation failed."
           exit 1
         fi
 
-    # Upload compiled DTBs as artifacts
-    - name: Upload DTB artifacts
+    # Upload compiled DTB as artifact
+    - name: Upload DTB artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rk3399-nanopi4-dtbs
-        path: |
-          current-repo/dts/rk3399-nanopi4-rev00.dtb
-          current-repo/dts/rk3399-nanopi4-rev00-official.dtb
+        name: rk3399-nanopi4-rev00-dtb
+        path: current-repo/dts/rk3399-nanopi4-rev00.dtb
         retention-days: 7

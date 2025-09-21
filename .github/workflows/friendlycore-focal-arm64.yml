@@ -17,7 +17,7 @@ jobs:
         path: sd-fuse_rk3399
 
     # Verify repository checkout and list supported images
-    - name: Verify build.sh and list supported images
+    - name: Verify build-kernel.sh and list supported images
       run: |
         echo "Listing sd-fuse_rk3399 directory contents:"
         ls -la sd-fuse_rk3399 || echo "Error: sd-fuse_rk3399 directory not found."
@@ -25,15 +25,15 @@ jobs:
           echo "Error: sd-fuse_rk3399 directory not found."
           exit 1
         fi
-        if [ ! -f sd-fuse_rk3399/build.sh ]; then
-          echo "Error: build.sh not found in sd-fuse_rk3399."
+        if [ ! -f sd-fuse_rk3399/build-kernel.sh ]; then
+          echo "Error: build-kernel.sh not found in sd-fuse_rk3399."
           exit 1
         fi
-        echo "build.sh found. Extracting supported image names:"
-        grep -oE '[a-zA-Z0-9_-]+(-arm64|-64|-20\.04)?' sd-fuse_rk3399/build.sh | sort -u | grep -E 'focal|desktop|buildroot|friendlywrt|debian|android|lubuntu'
-        if grep -q "friendlycore-focal-arm64" sd-fuse_rk3399/build.sh; then
-          echo "build.sh supports friendlycore-focal-arm64."
+        echo "build-kernel.sh found. Extracting supported image names:"
+        grep -oE '[a-zA-Z0-9_-]+(-arm64|-64|-20\.04)?' sd-fuse_rk3399/build-kernel.sh | sort -u | grep -E 'focal|desktop|buildroot|friendlywrt|debian|android|lubuntu'
+        if grep -q "friendlycore-focal-arm64" sd-fuse_rk3399/build-kernel.sh; then
+          echo "build-kernel.sh supports friendlycore-focal-arm64."
         else
-          echo "Error: build.sh does not support friendlycore-focal-arm64."
+          echo "Error: build-kernel.sh does not support friendlycore-focal-arm64."
           exit 1
         fi

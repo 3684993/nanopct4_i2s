@@ -1,4 +1,4 @@
-name: Build RK3399 FriendlyCore Focal Firmware
+name: Ubuntu Desktop Image
 
 on:
   workflow_dispatch:

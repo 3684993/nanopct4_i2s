@@ -24,4 +24,47 @@
             sound-dai = <&inmp441>;
         };
     };
+    inmp441: inmp441-codec {
+        compatible = "invensense,inmp441";
+        #sound-dai-cells = <0>;
+        status = "okay";
+    };
+
+    cru: clock-controller {
+        compatible = "rockchip,rk3399-cru";
+        #clock-cells = <1>;
+    };
+
+    pinctrl: pinctrl {
+        compatible = "rockchip,rk3399-pinctrl";
+        #pinctrl-cells = <2>;
+
+        pcfg_pull_none: pcfg-pull-none {
+            bias-disable;
+        };
+    };
+
+    i2s1: i2s1 {
+        compatible = "rockchip,rk3399-i2s", "rockchip,rk3066-i2s";
+        clocks = <&cru 0>, <&cru 1>;
+        clock-names = "i2s_clk", "i2s_hclk";
+        rockchip,playback-channels = <2>;
+        rockchip,capture-channels = <2>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&i2s1_2ch_bus>;
+        status = "okay";
+    };
+};
+
+&pinctrl {
+    i2s1 {
+        i2s1_2ch_bus: i2s1-2ch-bus {
+            rockchip,pins =
+                <4 3 1 &pcfg_pull_none>,
+                <4 4 1 &pcfg_pull_none>,
+                <4 5 1 &pcfg_pull_none>,
+                <4 6 1 &pcfg_pull_none>,
+                <4 7 1 &pcfg_pull_none>;
+        };
+    };
 };

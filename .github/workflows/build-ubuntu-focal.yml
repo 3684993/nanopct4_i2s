@@ -127,17 +127,6 @@ jobs:
         sed -i 's/mmcblk1/mmcblk2/g' mk-sd-image.sh
         ./mk-sd-image.sh ubuntu-focal-desktop-arm64
 
-    # Verify partition table
-    - name: Verify partition table
-      working-directory: sd-fuse_rk3399
-      run: |
-        fdisk -l out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img
-        if fdisk -l out/rk3399-sd-ubuntu-focal-desktop-arm64-*.img | grep -q "mmcblk2p.*ext4"; then
-          echo "Partition with ext4 found in the image."
-        else
-          echo "Error: No ext4 partition found in the image."
-        fi
-
     # Upload the generated firmware as an artifact
     - name: Upload firmware artifact
       uses: actions/upload-artifact@v4

@@ -13,11 +13,11 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: friendlyarm/sd-fuse_rk3399
-        ref: master
+        ref: kernel-4.19
         path: sd-fuse_rk3399
 
     # Verify repository checkout and list supported images
-    - name: Verify build-kernel.sh and list supported images
+    - name: Verify mk-sd-image.sh and list supported images
       run: |
         echo "Listing sd-fuse_rk3399 directory contents:"
         ls -la sd-fuse_rk3399 || echo "Error: sd-fuse_rk3399 directory not found."
@@ -25,15 +25,16 @@ jobs:
           echo "Error: sd-fuse_rk3399 directory not found."
           exit 1
         fi
-        if [ ! -f sd-fuse_rk3399/build-kernel.sh ]; then
-          echo "Error: build-kernel.sh not found in sd-fuse_rk3399."
+        if [ ! -f sd-fuse_rk3399/mk-sd-image.sh ]; then
+          echo "Error: mk-sd-image.sh not found in sd-fuse_rk3399."
           exit 1
         fi
-        echo "build-kernel.sh found. Extracting supported image names:"
-        grep -oE '[a-zA-Z0-9_-]+(-arm64|-64|-20\.04)?' sd-fuse_rk3399/build-kernel.sh | sort -u | grep -E 'focal|desktop|buildroot|friendlywrt|debian|android|lubuntu'
-        if grep -q "friendlydesktop-arm64" sd-fuse_rk3399/build-kernel.sh; then
-          echo "build-kernel.sh supports friendlydesktop-arm64."
+        echo "mk-sd-image.sh found. Supported image names (from README_cn.md):"
+        echo -e "buildroot\nfriendlywrt21-kernel4\nfriendlycore-focal-arm64\ndebian-bullseye-desktop-arm64\ndebian-bullseye-minimal-arm64\nubuntu-focal-desktop-arm64\ndebian-bookworm-core-arm64\nubuntu-noble-core-arm64\nandroid10" | sort -u
+        echo "Checking mk-sd-image.sh for ubuntu-focal-desktop-arm64:"
+        if grep -q "ubuntu-focal-desktop-arm64" sd-fuse_rk3399/mk-sd-image.sh; then
+          echo "mk-sd-image.sh supports ubuntu-focal-desktop-arm64."
         else
-          echo "Error: build-kernel.sh does not support ubuntu-focal-desktop-arm64."
+          echo "Error: mk-sd-image.sh does not support ubuntu-focal-desktop-arm64."
           exit 1
         fi

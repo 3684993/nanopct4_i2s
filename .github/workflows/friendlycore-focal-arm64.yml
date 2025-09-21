@@ -1,4 +1,4 @@
-name: Check FriendlyCore Focal Support
+name: Check Ubuntu Focal Desktop Support
 
 on:
   workflow_dispatch:
@@ -31,9 +31,9 @@ jobs:
         fi
         echo "build-kernel.sh found. Extracting supported image names:"
         grep -oE '[a-zA-Z0-9_-]+(-arm64|-64|-20\.04)?' sd-fuse_rk3399/build-kernel.sh | sort -u | grep -E 'focal|desktop|buildroot|friendlywrt|debian|android|lubuntu'
-        if grep -q "friendlycore-focal-arm64" sd-fuse_rk3399/build-kernel.sh; then
-          echo "build-kernel.sh supports friendlycore-focal-arm64."
+        if grep -q "ubuntu-focal-desktop-arm64" sd-fuse_rk3399/build-kernel.sh; then
+          echo "build-kernel.sh supports ubuntu-focal-desktop-arm64."
         else
-          echo "Error: build-kernel.sh does not support friendlycore-focal-arm64."
+          echo "Error: build-kernel.sh does not support ubuntu-focal-desktop-arm64."
           exit 1
         fi

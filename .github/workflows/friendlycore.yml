@@ -111,7 +111,7 @@ jobs:
     - name: Compile U-Boot
       working-directory: sd-fuse_rk3399
       run: |
-        git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2021.07 uboot-rockchip
+        git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2017.09 uboot-rockchip
         UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh friendlycore-focal-arm64
 
     # Generate SD card firmware

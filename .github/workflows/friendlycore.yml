@@ -1,0 +1,142 @@
+name: FriendlyCore Focal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the current repository (containing the modified DTS file)
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+      with:
+        path: current-repo
+
+    # Checkout the sd-fuse_rk3399 repository
+    - name: Checkout sd-fuse_rk3399 repository
+      uses: actions/checkout@v4
+      with:
+        repository: friendlyarm/sd-fuse_rk3399
+        ref: kernel-4.19
+        path: sd-fuse_rk3399
+
+    # Install dependencies
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git build-essential crossbuild-essential-arm64 \
+          bc kmod libncurses-dev flex bison libssl-dev tar \
+          libelf-dev device-tree-compiler python3-pip fdisk
+        pip3 install gdown
+
+    # Install aarch64-gcc-11.3 toolchain
+    - name: Install aarch64-gcc-11.3
+      run: |
+        git clone https://github.com/friendlyarm/prebuilts.git -b master --depth 1
+        cd prebuilts/gcc-x64
+        sudo tar xvf toolchain-11.3-aarch64.tar.xz -C /
+
+    # Check for custom DTS file existence
+    - name: Check custom DTS file existence
+      run: |
+        if [ ! -f current-repo/dts/rk3399-nanopi4-rev00.dts ]; then
+          echo "Error: Custom DTS file 'current-repo/dts/rk3399-nanopi4-rev00.dts' not found."
+          exit 1
+        fi
+
+    # Clean kernel-rk3399 directory if it exists
+    - name: Clean kernel-rk3399 directory
+      run: |
+        if [ -d sd-fuse_rk3399/kernel-rk3399 ]; then
+          echo "Cleaning existing kernel-rk3399 directory..."
+          rm -rf sd-fuse_rk3399/kernel-rk3399
+        fi
+
+    # Clone kernel source
+    - name: Clone kernel source
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/kernel-rockchip --depth 1 -b nanopi4-v4.19.y kernel-rk3399
+
+    # Copy custom DTS file to kernel source (overwrite existing)
+    - name: Copy custom DTS file
+      run: |
+        cp current-repo/dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
+        if [ -f sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
+          echo "Custom DTS file successfully copied to kernel source."
+        else
+          echo "Error: Failed to copy DTS file to kernel source."
+          exit 1
+        fi
+
+    # Verify kernel DTS Makefile includes rk3399-nanopi4-rev00.dtb
+    - name: Verify kernel DTS Makefile
+      run: |
+        if ! grep -q "rk3399-nanopi4-rev00.dtb" sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile; then
+          echo "Error: 'rk3399-nanopi4-rev00.dtb' not found in kernel DTS Makefile."
+          echo "Adding 'rk3399-nanopi4-rev00.dtb' to Makefile..."
+          echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi4-rev00.dtb" >> sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile
+        else
+          echo "Kernel DTS Makefile already includes 'rk3399-nanopi4-rev00.dtb'."
+        fi
+
+    # Download and extract friendlycore-focal-arm64 images
+    - name: Download and extract friendlycore-focal-arm64
+      working-directory: sd-fuse_rk3399
+      run: |
+        gdown https://drive.google.com/uc?id=1qiiPISJUEowbJZITUIM2VoEhkUA9Uwee -O friendlycore-focal-arm64-images.tgz
+        tar xvzf friendlycore-focal-arm64-images.tgz
+        if [ -d friendlycore-focal-arm64 ]; then
+          echo "Successfully extracted friendlycore-focal-arm64 images."
+        else
+          echo "Error: Failed to extract friendlycore-focal-arm64 images."
+          exit 1
+        fi
+
+    # Compile kernel
+    - name: Compile kernel
+      working-directory: sd-fuse_rk3399
+      run: |
+        KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    # Compile kernel headers
+    - name: Compile kernel headers
+      working-directory: sd-fuse_rk3399
+      run: |
+        MK_HEADERS_DEB=1 BUILD_THIRD_PARTY_DRIVER=0 KERNEL_SRC=$PWD/kernel-rk3399 ./build-kernel.sh friendlycore-focal-arm64
+
+    # Clone and compile U-Boot
+    - name: Compile U-Boot
+      working-directory: sd-fuse_rk3399
+      run: |
+        git clone https://github.com/friendlyarm/uboot-rockchip --depth 1 -b nanopi4-v2021.07 uboot-rockchip
+        UBOOT_SRC=$PWD/uboot-rockchip ./build-uboot.sh friendlycore-focal-arm64
+
+    # Generate SD card firmware
+    - name: Generate SD card firmware
+      working-directory: sd-fuse_rk3399
+      run: |
+        sed -i 's/mmcblk1/mmcblk2/g' mk-sd-image.sh
+        ./mk-sd-image.sh friendlycore-focal-arm64
+
+    # Verify partition table
+    - name: Verify partition table
+      working-directory: sd-fuse_rk3399
+      run: |
+        fdisk -l out/rk3399-sd-friendlycore-focal-4.19-arm64-*.img
+        if fdisk -l out/rk3399-sd-friendlycore-focal-4.19-arm64-*.img | grep -q "mmcblk2p.*ext4"; then
+          echo "Partition with ext4 found in the image."
+        else
+          echo "Error: No ext4 partition found in the image."
+          exit 1
+        fi
+
+    # Upload the generated firmware as an artifact
+    - name: Upload firmware artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3399-sd-friendlycore-focal
+        path: sd-fuse_rk3399/out/rk3399-sd-friendlycore-focal-4.19-arm64-*.img
+        retention-days: 7

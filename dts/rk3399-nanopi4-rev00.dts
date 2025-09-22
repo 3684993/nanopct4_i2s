@@ -15,7 +15,7 @@
 
     sound {
         compatible = "simple-audio-card";
-        simple-audio-card,name = "INMP441-Mic";
+        simple-audio-card,name = "INMP441Mic";
         simple-audio-card,format = "i2s";
         simple-audio-card,mclk-fs = <256>;
         status = "okay";
@@ -30,7 +30,7 @@
     };
 
     inmp441: inmp441-codec {
-        compatible = "invensense,inmp441";
+        compatible = "linux,snd-soc-dummy";
         #sound-dai-cells = <0>;
         status = "okay";
     };

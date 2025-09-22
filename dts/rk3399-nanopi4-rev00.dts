@@ -13,7 +13,7 @@
     model = "FriendlyElec NanoPC-T4";
     compatible = "friendlyelec,nanopc-t4", "rockchip,rk3399";
 
-    sound {
+    sound-inmp441 {
         compatible = "simple-audio-card";
         simple-audio-card,name = "INMP441Mic";
         simple-audio-card,format = "i2s";
@@ -96,6 +96,7 @@
     pinctrl-names = "default";
     pinctrl-0 = <&i2s1_2ch_bus>;
     status = "okay";
+    #sound-dai-cells = <0>;
 };
 
 &pinctrl {

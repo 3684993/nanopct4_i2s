@@ -66,27 +66,12 @@ jobs:
         cp current-repo/dts/rk3399-nanopi4-rev00.dts sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
         if [ -f sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts ]; then
           echo "Custom DTS file successfully copied to kernel source."
+          cat sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/rk3399-nanopi4-rev00.dts
         else
           echo "Error: Failed to copy DTS file to kernel source."
           exit 1
         fi
         
-    - name: Update kernel config for I2S and audio
-      working-directory: sd-fuse_rk3399/kernel-rk3399
-      run: |
-        echo -e "CONFIG_SND_SOC_ROCKCHIP_I2S=y\nCONFIG_SND_SOC_SIMPLE_CARD=y\nCONFIG_SND_SOC=y\nCONFIG_SND=y" >> .config
-        make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-
-    # Verify kernel DTS Makefile includes rk3399-nanopi4-rev00.dtb
-    - name: Verify kernel DTS Makefile
-      run: |
-        if ! grep -q "rk3399-nanopi4-rev00.dtb" sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile; then
-          echo "Error: 'rk3399-nanopi4-rev00.dtb' not found in kernel DTS Makefile."
-          echo "Adding 'rk3399-nanopi4-rev00.dtb' to Makefile..."
-          echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi4-rev00.dtb" >> sd-fuse_rk3399/kernel-rk3399/arch/arm64/boot/dts/rockchip/Makefile
-        else
-          echo "Kernel DTS Makefile already includes 'rk3399-nanopi4-rev00.dtb'."
-        fi
 
     # Download and extract ubuntu-focal-desktop-arm64 images
     - name: Download and extract ubuntu-focal-desktop-arm64

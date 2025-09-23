@@ -98,7 +98,7 @@
 
 &i2s0 {
     pinctrl-0 = <&i2s0_2ch_bus>;
-    status = "disabled";
+    status = "okay";
 };
 
 &i2s1 {
@@ -122,11 +122,11 @@
     i2s1 {
         i2s1_2ch_bus: i2s1-2ch-bus {
             rockchip,pins =
-                <4 RK_PA3 RK_FUNC_1 &pcfg_pull_none>,
-                <4 RK_PA4 RK_FUNC_1 &pcfg_pull_none>,
-                <4 RK_PA5 RK_FUNC_1 &pcfg_pull_none>,
-                <4 RK_PA6 RK_FUNC_1 &pcfg_pull_none>,
-                <4 RK_PA7 RK_FUNC_1 &pcfg_pull_none>;
+                <4 3 1 &pcfg_pull_none>,
+                <4 4 1 &pcfg_pull_none>,
+                <4 5 1 &pcfg_pull_none>,
+                <4 6 1 &pcfg_pull_none>,
+                <4 7 1 &pcfg_pull_none>;
         };
     };
 };

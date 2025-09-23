@@ -35,7 +35,7 @@
         status = "okay";
     };
 
-    /* 添加外部时钟输入，用于 I2S1 MCLK */
+    /* 外部时钟输入，用于 I2S1 MCLK */
     osc45m: osc45m {
         compatible = "fixed-clock";
         #clock-cells = <0>;
@@ -109,28 +109,42 @@
 
 &i2s0 {
     pinctrl-0 = <&i2s0_2ch_bus>;
+    status = "okay";
 };
 
 &i2s1 {
-    rockchip,playback-channels = <2>;
-    rockchip,capture-channels = <2>;
+    compatible = "rockchip,rk3399-i2s", "rockchip,rk3066-i2s";
+    reg = <0x0 0xff890000 0x0 0x1000>;
+    interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH 0>;
+    dmas = <&dmac_bus 2>, <&dmac_bus 3>;
+    dma-names = "tx", "rx";
+    clocks = <&cru SCLK_I2S1_8CH>, <&cru HCLK_I2S1_8CH>, <&clkin_i2s>;
+    clock-names = "i2s_clk", "i2s_hclk", "i2s_mclk";
+    resets = <&cru SRST_I2S1_8CH>, <&cru SRST_H_I2S1_8CH>;
+    reset-names = "reset-m", "reset-h";
     pinctrl-names = "default";
     pinctrl-0 = <&i2s1_2ch_bus>;
+    power-domains = <&power RK3399_PD_SDIOAUDIO>;
+    rockchip,grf = <&grf>;
+    rockchip,capture-channels = <2>;
+    rockchip,playback-channels = <2>;
+    #sound-dai-cells = <0>;
     status = "okay";
-    clocks = <&clkin_i2s>; /* 添加外部时钟输入 */
-    clock-names = "i2s_mclk";
-    rockchip,grf = <&grf>; /* 添加 GRF 寄存器引用 */
+};
+
+&i2s2 {
+    status = "disabled"; /* 禁用 i2s2 以避免资源冲突 */
 };
 
 &pinctrl {
     i2s1 {
         i2s1_2ch_bus: i2s1-2ch-bus {
             rockchip,pins =
-                <4 3 RK_FUNC_1 &pcfg_pull_none>,
-                <4 4 RK_FUNC_1 &pcfg_pull_none>,
-                <4 5 RK_FUNC_1 &pcfg_pull_none>,
-                <4 6 RK_FUNC_1 &pcfg_pull_none>,
-                <4 7 RK_FUNC_1 &pcfg_pull_none>;
+                <4 3 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SCLK */
+                <4 4 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_LRCK */
+                <4 5 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SDI */
+                <4 6 RK_FUNC_1 &pcfg_pull_none>, /* I2S1_SDO */
+                <4 7 RK_FUNC_1 &pcfg_pull_none>; /* I2S1_MCLK */
         };
     };
 };

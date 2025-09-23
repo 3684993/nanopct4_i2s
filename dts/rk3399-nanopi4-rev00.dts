@@ -122,11 +122,11 @@
     i2s1 {
         i2s1_2ch_bus: i2s1-2ch-bus {
             rockchip,pins =
-                <4 3 1 &pcfg_pull_none>,
-                <4 4 1 &pcfg_pull_none>,
-                <4 5 1 &pcfg_pull_none>,
-                <4 6 1 &pcfg_pull_none>,
-                <4 7 1 &pcfg_pull_none>;
+                <4 3 RK_FUNC_1 &pcfg_pull_none>,
+                <4 4 RK_FUNC_1 &pcfg_pull_none>,
+                <4 5 RK_FUNC_1 &pcfg_pull_none>,
+                <4 6 RK_FUNC_1 &pcfg_pull_none>,
+                <4 7 RK_FUNC_1 &pcfg_pull_none>;
         };
     };
 };

@@ -3,130 +3,130 @@
  * FriendlyElec NanoPC-T4 - i2s1 enable + simple-audio-card test DTS
  */
 
- /dts-v1/;
- #include <dt-bindings/gpio/gpio.h>
- #include <dt-bindings/pinctrl/rockchip.h>
- #include "rk3399-nanopi4-common.dtsi"
+/dts-v1/;
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include "rk3399-nanopi4-common.dtsi"
 
- / {
-     model = "FriendlyElec NanoPC-T4";
-     compatible = "friendlyelec,nanopc-t4", "rockchip,rk3399";
+/ {
+    model = "FriendlyElec NanoPC-T4";
+    compatible = "friendlyelec,nanopc-t4", "rockchip,rk3399";
 
-     /* ---- 外部时钟节点 (fixed clocks) ---- */
-     osc45m: osc45m {
-         compatible = "fixed-clock";
-         #clock-cells = <0>;
-         clock-frequency = <45158400>; /* 44.1kHz * 1024 */
-     };
+    /* 外部时钟节点 */
+    osc45m: osc45m {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <45158400>; /* 44.1kHz * 1024 */
+    };
 
-     osc49m: osc49m {
-         compatible = "fixed-clock";
-         #clock-cells = <0>;
-         clock-frequency = <49152000>; /* 48kHz * 1024 */
-     };
+    /* 声卡节点 */
+    sound-inmp441 {
+        compatible = "simple-audio-card";
+        simple-audio-card,name = "INMP441Mic";
+        simple-audio-card,format = "i2s";
+        simple-audio-card,mclk-fs = <256>;
+        simple-audio-card,bitclock-master = <&inmp441_cpu>;
+        simple-audio-card,frame-master = <&inmp441_cpu>;
+        status = "okay";
 
-     /*
-      * NOTE: 原来你用 gpio-mux-clock 来在两个外部时钟之间切换（clkin_i2s）。
-      * 这次测试先改为直接使用 osc45m 作为 i2s1 的 mclk（更可靠）。
-      * 如果你确实需要 runtime 切换 45/49，请告诉我，我们再用正确的 mux-driver 或者由驱动层实现。
-      */
+        inmp441_cpu: simple-audio-card,cpu {
+            sound-dai = <&i2s1>;
+        };
 
-     /* ---- simple audio card 用于测试 INMP441（dummy codec） ---- */
-     sound-inmp441 {
-         compatible = "simple-audio-card";
-         simple-audio-card,name = "INMP441Mic";
-         simple-audio-card,format = "i2s";               /* i2s format */
-         simple-audio-card,mclk-fs = <256>;              /* mclk = fs * 256 (驱动会据此设置 mclk) */
-         simple-audio-card,bitclock-master = <&inmp441_cpu>;
-         simple-audio-card,frame-master = <&inmp441_cpu>;
-         status = "okay";
+        simple-audio-card,codec {
+            sound-dai = <&inmp441>;
+        };
+    };
 
-         inmp441_cpu: simple-audio-card,cpu {
-             /* 明确 phandle 指向 i2s1（索引 0）——与 i2s1 的 #sound-dai-cells = <0> 对应 */
-             sound-dai = <&i2s1 0>;
-         };
+    /* Dummy codec for INMP441 */
+    inmp441: inmp441-codec {
+        compatible = "linux,snd-soc-dummy";
+        #sound-dai-cells = <0>;
+        status = "okay";
+    };
+};
 
-         codec: simple-audio-card,codec {
-             sound-dai = <&inmp441 0>;
-         };
+&mach {
+    hwrev = <0>;
+    model = "NanoPC-T4";
+};
 
-         simple-audio-card,widgets = "Mic Switch";
-         simple-audio-card,controls = "Mic Switch";
-     };
+&dfi {
+    status = "okay";
+};
 
-     /* dummy codec node (用于调试/强制机器驱动注册 ALSA) */
-     inmp441: inmp441-codec {
-         compatible = "linux,snd-soc-dummy";
-         #sound-dai-cells = <0>;
-         status = "okay";
-     };
- };
+&dmc {
+    status = "okay";
+    center-supply = <&vdd_center>;
+    upthreshold = <40>;
+    downdifferential = <20>;
+    system-status-freq = <
+        /* system status         freq(KHz) */
+        SYS_STATUS_NORMAL       800000
+        SYS_STATUS_REBOOT       528000
+        SYS_STATUS_SUSPEND      200000
+        SYS_STATUS_VIDEO_1080P  200000
+        SYS_STATUS_VIDEO_4K     600000
+        SYS_STATUS_VIDEO_4K_10B 800000
+        SYS_STATUS_PERFORMANCE  800000
+        SYS_STATUS_BOOST        600000
+        SYS_STATUS_DUALVIEW     600000
+        SYS_STATUS_ISP          600000
+    >;
+    vop-bw-dmc-freq = <
+        /* min_bw(MB/s) max_bw(MB/s) freq(KHz) */
+        0       577      200000
+        578     924      400000
+        925     2075     600000
+        2076    99999    800000
+    >;
+    auto-min-freq = <200000>;
+    auto-freq-en = <1>;
+};
 
- &mach {
-     hwrev = <0>;
-     model = "NanoPC-T4";
- };
+&pcie0 {
+    ep-gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&pcie_gpios>;
+    num-lanes = <4>;
+    max-link-speed = <2>;
+};
 
- /* 保留你已有的部分 device nodes 状态 */
- &dfi { status = "okay"; };
- &dmc { status = "okay"; ... };
+&pwm3 {
+    status = "okay";
+};
 
- &pcie0 {
-     ep-gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
-     pinctrl-names = "default";
-     pinctrl-0 = <&pcie_gpios>;
-     num-lanes = <4>;
-     max-link-speed = <2>;
- };
+&i2s0 {
+    pinctrl-0 = <&i2s0_2ch_bus>;
+    status = "okay";
+};
 
- &pwm3 { status = "okay"; };
+&i2s1 {
+    compatible = "rockchip,rk3399-i2s", "rockchip,rk3066-i2s";
+    reg = <0x0 0xff890000 0x0 0x1000>;
+    interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
+    clocks = <&cru SCLK_I2S1>, <&cru HCLK_I2S1>, <&osc45m>;
+    clock-names = "i2s_clk", "i2s_hclk", "i2s_mclk";
+    dmas = <&dmac_bus 2>, <&dmac_bus 3>;
+    dma-names = "tx", "rx";
+    rockchip,grf = <&grf>;
+    rockchip,playback-channels = <2>;
+    rockchip,capture-channels = <2>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&i2s1_2ch_bus>;
+    status = "okay";
+    #sound-dai-cells = <0>;
+};
 
- /* i2s0 保持原样（已正常工作） */
- &i2s0 {
-     pinctrl-0 = <&i2s0_2ch_bus>;
-     status = "disabled";
- };
-
- /*
-  * i2s1 - 核心节点
-  *
-  * 关键改动：
-  *  - 用 osc45m 作为第三个 clock（mclk）以确保驱动能拿到 mclk
-  *  - 明确 clock-names 对应顺序：sclk,hclk,mclk
-  *  - 保留 #sound-dai-cells = <0>
-  */
- &i2s1 {
-     compatible = "rockchip,rk3399-i2s", "rockchip,rk3066-i2s";
-     reg = <0x0 0xff890000 0x0 0x1000>;
-     interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
-     clocks = <&cru SCLK_I2S1>, <&cru HCLK_I2S1>, <&osc45m>;
-     clock-names = "i2s_sclk", "i2s_hclk", "i2s_mclk";   /* 注意顺序要与 clocks 一致 */
-     dmas = <&dmac_bus 2>, <&dmac_bus 3>;
-     dma-names = "tx", "rx";
-     rockchip,grf = <&grf>;
-     rockchip,playback-channels = <2>;
-     rockchip,capture-channels = <2>;
-     pinctrl-names = "default";
-     pinctrl-0 = <&i2s1_2ch_bus>;
-     status = "okay";
-     #sound-dai-cells = <0>;
- };
-
- &pinctrl {
-     /*
-      * pinctrl 节点——务必与 i2s0 成功的配置对齐（核对 bank & 函数号）
-      * 我保持你原来的 RK_PAx 风格，但请务必在板子资料或其他成功的 nanopi4 dts
-      * 中核对这些引脚是否正确（如果不正确，I2S1 就不会被物理复用为 I2S 功能）。
-      */
-     i2s1 {
-         i2s1_2ch_bus: i2s1-2ch-bus {
-             /* 下面的行样式沿用了你原始文件的写法——实际 pin 编号请和有成功记录的 i2s0 对比确认 */
-             rockchip,pins =
-                 <4 RK_PA3 RK_FUNC_1 &pcfg_pull_none>,
-                 <4 RK_PA4 RK_FUNC_1 &pcfg_pull_none>,
-                 <4 RK_PA5 RK_FUNC_1 &pcfg_pull_none>,
-                 <4 RK_PA6 RK_FUNC_1 &pcfg_pull_none>,
-                 <4 RK_PA7 RK_FUNC_1 &pcfg_pull_none>;
-         };
-     };
- };
+&pinctrl {
+    i2s1 {
+        i2s1_2ch_bus: i2s1-2ch-bus {
+            rockchip,pins =
+                <4 RK_PA3 RK_FUNC_1 &pcfg_pull_none>,
+                <4 RK_PA4 RK_FUNC_1 &pcfg_pull_none>,
+                <4 RK_PA5 RK_FUNC_1 &pcfg_pull_none>,
+                <4 RK_PA6 RK_FUNC_1 &pcfg_pull_none>,
+                <4 RK_PA7 RK_FUNC_1 &pcfg_pull_none>;
+        };
+    };
+};
